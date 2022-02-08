@@ -2,7 +2,7 @@
 
 [![NPM Version][npm-image]][npm-url]
 [![NPM Downloads][downloads-image]][downloads-url]
-[![Build Status][travis-image]][travis-url]
+[![Build Status][ci-image]][ci-url]
 [![Test Coverage][coveralls-image]][coveralls-url]
 [![Dependencies][dependencies-image]][dependencies-url]
 [![DevDependencies][devdependencies-image]][devdependencies-url]
@@ -22,8 +22,8 @@ Powerful task management for Javascript.
 
 [npm-image]: https://img.shields.io/npm/v/power-tasks.svg
 [npm-url]: https://npmjs.org/package/power-tasks
-[travis-image]: https://img.shields.io/travis/panates/power-tasks/master.svg
-[travis-url]: https://travis-ci.com/panates/power-tasks
+[ci-image]: https://circleci.com/gh/panates/power-tasks/tree/main.svg?style=svg
+[ci-url]: https://circleci.com/gh/panates/power-tasks/tree/main
 [coveralls-image]: https://img.shields.io/coveralls/panates/power-tasks/master.svg
 [coveralls-url]: https://coveralls.io/r/panates/power-tasks
 [downloads-image]: https://img.shields.io/npm/dm/power-tasks.svg
