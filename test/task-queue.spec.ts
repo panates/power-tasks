@@ -5,7 +5,7 @@ import {delay} from '../src/utils';
 
 const noOp = () => void (0);
 
-describe.only('TaskQueue', function () {
+describe('TaskQueue', function () {
 
     it('should construct', function () {
         const queue = new TaskQueue();

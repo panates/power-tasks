@@ -30,7 +30,7 @@ jobs:
           paths:
             - node_modules
       - run: npm install
-      - run: npm run ci-test
+      - run: npm run citest
       - run: npm install coveralls --no-save
       - coveralls/upload:
-          path_to_lcov: "coverage/lcov.info"
+          path_to_lcov: ./coverage/lcov.info
