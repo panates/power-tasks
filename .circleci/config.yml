@@ -27,7 +27,7 @@ jobs:
           key: v1-deps-{{ checksum "package-lock.json" }}
           paths:
             - node_modules
-      - run: echo "Running tests"
       - run: npm install
       - run: npm run ci-test
-      - run: npm install coveralls && cat ./coverage/lcov.info | coveralls
+      - run: npm install coveralls --no-save
+      - run: cat ./coverage/lcov.info | coveralls
