@@ -150,7 +150,7 @@ describe.only('TaskQueue', function () {
         queue.enqueue(() => {
             err = new Error('Failed');
         });
-        queue.clear();
+        queue.clearQueue();
         queue.enqueue(() => done(err));
     });
 });

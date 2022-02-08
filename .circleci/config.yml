@@ -8,7 +8,7 @@ workflows:
   sample:
     jobs:
       - node/test:
-          version: '14.19'
+          version: '15.11'
           pkg-manager: npm
       - node/test:
           version: '16.10'
