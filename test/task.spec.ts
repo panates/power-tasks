@@ -1,7 +1,7 @@
 import assert from 'assert';
-import timers from 'timers/promises';
 import './env';
 import {Task} from '../src';
+import {delay} from '../src/utils';
 
 const noOp = () => void (0);
 
@@ -23,7 +23,7 @@ describe('Task', function () {
         const t = Date.now();
         let i = 0;
         const task = new Task(async () => {
-            await timers.setTimeout(50);
+            await delay(50);
             return ++i;
         });
         task.execute();
@@ -40,7 +40,7 @@ describe('Task', function () {
         const t = Date.now();
         let i = 0;
         const task = new Task(async () => {
-            await timers.setTimeout(50);
+            await delay(50);
             return ++i;
         });
         task.execute();
@@ -64,7 +64,7 @@ describe('Task', function () {
                 new Task(async () => 2),
                 () => 3,
                 async () => {
-                    await timers.setTimeout(50);
+                    await delay(50);
                     return 4;
                 }
             ]
@@ -85,12 +85,12 @@ describe('Task', function () {
             const x = i + 1;
             children.push(new Task(
                 async (task) => {
-                    await timers.setTimeout(50);
+                    await delay(50);
                     if (task.isRunning)
                         fulfilled.push(x);
                 }, {
                     cancel: async () => {
-                        await timers.setTimeout(5);
+                        await delay(5);
                         cancelled.push(x);
                     }
                 }
@@ -99,7 +99,7 @@ describe('Task', function () {
         const task = new Task(() => 0, {children, bail: true, concurrency: 10});
         task.execute();
         assert.strictEqual(task.status, 'running');
-        await timers.setTimeout(10);
+        await delay(10);
         task.cancel();
         await task.toPromise();
         assert.strictEqual(task.isCancelled, true);
@@ -178,11 +178,11 @@ describe('Task', function () {
         const arr = [];
         const task = new Task([
             new Task(async () => {
-                await timers.setTimeout(10);
+                await delay(10);
                 arr.push(1);
             }),
             new Task(async () => {
-                await timers.setTimeout(5);
+                await delay(5);
                 arr.push(2);
             })
         ], {concurrency: 10});
@@ -199,7 +199,7 @@ describe('Task', function () {
         const a = [];
         for (let i = 0; i < 8; i++) {
             a.push(async () => {
-                await timers.setTimeout(50);
+                await delay(50);
             })
         }
         const task = new Task(a, {concurrency: 2});
@@ -218,12 +218,12 @@ describe('Task', function () {
         const task = new Task([
             new Task(
                 async () => {
-                    await timers.setTimeout(20);
+                    await delay(20);
                     if (!cancelled)
                         fulfilled = true;
                 }, {
                     cancel: async () => {
-                        await timers.setTimeout(10);
+                        await delay(10);
                         cancelled = true;
                     }
                 }
@@ -247,7 +247,7 @@ describe('Task', function () {
         const r = [];
         const newFn = (i: number) => (
             async () => {
-                await timers.setTimeout(50 + (i * 5));
+                await delay(50 + (i * 5));
                 r.push(i);
             });
         const t5 = new Task(newFn(5), {name: 't5'});
@@ -267,7 +267,7 @@ describe('Task', function () {
         const r = [];
         const newFn = (i: number, fail?: boolean) => (
             async () => {
-                await timers.setTimeout(50 + (i * 5));
+                await delay(50 + (i * 5));
                 if (fail)
                     throw new Error('test');
                 r.push(i);
@@ -292,7 +292,7 @@ describe('Task', function () {
         const r = [];
         const newFn = (i: number) => (
             async () => {
-                await timers.setTimeout(50 + (i * 5));
+                await delay(50 + (i * 5));
                 r.push(i);
             });
         const t5 = new Task(newFn(5), {name: 't5'});

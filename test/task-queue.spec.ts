@@ -1,7 +1,7 @@
 import assert from 'assert';
-import timers from 'timers/promises';
 import './env';
 import {Task, TaskQueue} from '../src';
+import {delay} from '../src/utils';
 
 const noOp = () => void (0);
 
@@ -40,7 +40,7 @@ describe.only('TaskQueue', function () {
     it('should execute async function task', function (done) {
         const queue = new TaskQueue();
         queue.enqueue(async () => {
-            await timers.setTimeout(5);
+            await delay(5);
             done();
         });
     });
@@ -145,7 +145,7 @@ describe.only('TaskQueue', function () {
         const queue = new TaskQueue();
         let err;
         queue.enqueue(async () => {
-            await timers.setTimeout(10);
+            await delay(10);
         });
         queue.enqueue(() => {
             err = new Error('Failed');

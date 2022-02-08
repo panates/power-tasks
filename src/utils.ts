@@ -3,3 +3,7 @@ export function plural(word: string, isPlural: boolean | number, pluralWord?: st
         return pluralWord ? pluralWord : word + 's';
     return word;
 }
+
+export function delay(t: number) {
+    return new Promise(resolve => setTimeout(resolve, t));
+}
