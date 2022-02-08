@@ -73,7 +73,7 @@
     "postbuild": "cp package.cjs.json ./cjs/package.json",
     "compile": "tsc -b tsconfig.json",
     "lint": "eslint --no-error-on-unmatched-pattern",
-    "travis-cover": "nyc --reporter lcovonly npm run test"
+    "ci-test": "nyc --reporter lcovonly npm run test"
   },
   "nyc": {
     "temp-dir": "./coverage/.nyc_output"

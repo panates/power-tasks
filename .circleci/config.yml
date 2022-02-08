@@ -1,18 +1,33 @@
 # This config is equivalent to both the '.circleci/extended/orb-free.yml' and the base '.circleci/config.yml'
 version: 2.1
 
-orbs:
-  node: circleci/node@4.7
-
 workflows:
-  sample:
+  main:
     jobs:
-      - node/test:
-          version: '15.11'
-          pkg-manager: npm
-      - node/test:
-          version: '16.10'
-          pkg-manager: npm
-      - node/test:
-          version: '17.4'
-          pkg-manager: npm
+      - test:
+          version: '15'
+      - test:
+          version: '16'
+      - test:
+          version: '17'
+
+jobs:
+  test:
+    parameters:
+      version:
+        type: string
+    docker:
+      - image: circleci/node:<< parameters.version >>
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - v1-deps-{{ checksum "package-lock.json" }}
+      - save_cache:
+          key: v1-deps-{{ checksum "package-lock.json" }}
+          paths:
+            - node_modules
+      - run: echo "Running tests"
+      - run: npm install
+      - run: npm run ci-test
+      - run: npm install coveralls && cat ./coverage/lcov.info | coveralls
