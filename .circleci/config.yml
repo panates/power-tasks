@@ -33,4 +33,4 @@ jobs:
       - run: npm run ci-test
       - run: npm install coveralls --no-save
       - coveralls/upload:
-          path_to_lcov: "./coverage/lcov.info"
+          path_to_lcov: "coverage/lcov.info"
