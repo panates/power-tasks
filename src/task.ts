@@ -28,7 +28,7 @@ export class Task<T = any> extends TypedEventEmitterClass<TaskEvents>(AsyncEvent
     protected _executeFn: TaskFunction;
     protected _children?: Task[];
     protected _status: TaskStatus = 'idle';
-    protected _statusMessage?: string;
+    protected _message?: string;
     protected _startTime?: number;
     protected _finishTime?: number;
     protected _error?: Error;
@@ -128,7 +128,7 @@ export class Task<T = any> extends TypedEventEmitterClass<TaskEvents>(AsyncEvent
         if (!(this.isFinished || this.isCancelling)) {
             const isRunning = this.isRunning;
             this._status = 'cancelling';
-            this._statusMessage = 'Cancelling';
+            this._message = 'Cancelling';
             if (isRunning) {
                 const cancelFn = this.options.cancel;
                 if (cancelFn)
@@ -196,7 +196,7 @@ export class Task<T = any> extends TypedEventEmitterClass<TaskEvents>(AsyncEvent
         this._status = 'running';
         this._startTime = Date.now();
         this._finishTime = undefined;
-        this._statusMessage = '';
+        this._message = '';
         await this.emitAsync('start').catch(noOp);
 
         if (typeof this._options.children === 'function') {
@@ -231,8 +231,8 @@ export class Task<T = any> extends TypedEventEmitterClass<TaskEvents>(AsyncEvent
             for (const task of children) {
                 if (failedCount && options.bail) {
                     this._status = 'failed';
-                    this._statusMessage = 'Child task failed';
-                    const error: any = new Error(task._statusMessage);
+                    this._message = 'Child task failed.\n' + task._message;
+                    const error: any = new Error(task._message);
                     this._cancelChildren()
                         .catch(noOp)
                         .finally(() => this.emitAsync('finish', error));
@@ -253,8 +253,8 @@ export class Task<T = any> extends TypedEventEmitterClass<TaskEvents>(AsyncEvent
                             childrenLeft--;
                             failedCount++;
                             task._status = 'failed';
-                            task._statusMessage = 'Dependent task failed';
-                            const error: any = new Error(task._statusMessage);
+                            task._message = 'Dependent task failed';
+                            const error: any = new Error(task._message);
                             error.dependency = depTask;
                             continue;
                         }
@@ -262,13 +262,13 @@ export class Task<T = any> extends TypedEventEmitterClass<TaskEvents>(AsyncEvent
                             childrenLeft--;
                             failedCount++;
                             task._status = 'cancelled';
-                            task._statusMessage = 'Dependent task cancelled';
-                            const error: any = new Error(task._statusMessage);
+                            task._message = 'Dependent task cancelled';
+                            const error: any = new Error(task._message);
                             error.dependency = depTask;
                             continue;
                         }
                         if (!depTask.isFinished) {
-                            task._statusMessage = 'Waiting dependencies';
+                            task._message = 'Waiting dependencies';
                             continue;
                         }
                     }
@@ -288,13 +288,13 @@ export class Task<T = any> extends TypedEventEmitterClass<TaskEvents>(AsyncEvent
                 const error: any = new Error(`${failedCount} child ${plural('task', failedCount)} failed`);
                 error.failed = failedCount;
                 this._status = 'failed';
-                this._statusMessage = error.message;
+                this._message = error.message;
                 this.emitAsync('finish', error).catch(noOp);
                 return;
             }
             if (this.isCancelling) {
                 this._status = 'cancelled';
-                this._statusMessage = 'Cancelled';
+                this._message = 'Cancelled';
                 this.emitAsync('finish').catch(noOp);
                 return;
             }
@@ -302,12 +302,12 @@ export class Task<T = any> extends TypedEventEmitterClass<TaskEvents>(AsyncEvent
             (async () => this._executeFn(this))()
                 .then((v: any) => {
                     this._status = 'fulfilled';
-                    this._statusMessage = 'Task completed';
+                    this._message = 'Task completed';
                     this.emitAsync('finish', undefined, v).catch(noOp);
                 })
                 .catch(e => {
                     this._status = 'failed';
-                    this._statusMessage = e instanceof Error ? e.message : '' + e;
+                    this._message = e instanceof Error ? e.message : '' + e;
                     this.emitAsync('finish', e).catch(noOp);
                 })
         }
