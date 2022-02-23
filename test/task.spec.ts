@@ -197,18 +197,17 @@ describe('Task', function () {
 
     it('should limit concurrent tasks', async function () {
         const a = [];
+        let running = 0;
         for (let i = 0; i < 8; i++) {
-            a.push(async () => {
+            a.push(new Task(async () => {
+                running++;
+                if (running > 2)
+                    throw new Error('Failed');
                 await delay(50);
-            })
+            }).on('finish', () => running--));
         }
         const task = new Task(a, {concurrency: 2});
         await task.execute().toPromise();
-        for (let i = 0; i < task.children.length; i += 4) {
-            assert.ok(task.children[i + 1].startTime - task.children[i].startTime < 5);
-            assert.ok(task.children[i + 2].startTime - task.children[i + 1].startTime >= 50);
-            assert.ok(task.children[i + 3].startTime - task.children[i + 2].startTime < 5);
-        }
     });
 
     it('should call "cancel" function if task is running and other child fails', async function () {
