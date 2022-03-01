@@ -1,56 +1,73 @@
-import assert from 'assert';
 import './env';
 import {Task} from '../src';
 import {delay} from '../src/utils';
 
 const noOp = () => void (0);
+const logUpdates = (messages: string[]) => {
+    return (v, t) => {
+        messages.push((t.name || 'task') + ':' + t.status +
+            (t.status === 'waiting' ? ':' + t.waitingFor.name : ''));
+    };
+}
 
 describe('Task', function () {
 
     it('should execute simple function', async function () {
-        const t = Date.now();
         let i = 0;
         const task = new Task(() => ++i);
-        const r = await task.execute().toPromise();
-        assert.strictEqual(task.status, 'fulfilled');
-        assert.strictEqual(r, 1);
-        assert.strictEqual(i, 1);
-        assert.ok(task.startTime >= t);
-        assert.ok(task.finishTime <= Date.now());
+        const messages: string[] = [];
+        const onUpdate = logUpdates(messages);
+        task.on('update', onUpdate);
+        const r = await task.toPromise();
+        expect(messages).toStrictEqual([
+            "task:running",
+            "task:fulfilled"
+        ]);
+        expect(r).toEqual(1);
+        expect(i).toEqual(1);
     });
 
     it('should execute async function', async function () {
-        const t = Date.now();
         let i = 0;
         const task = new Task(async () => {
             await delay(50);
             return ++i;
         });
-        task.execute();
-        assert.strictEqual(task.status, 'running');
+        const messages: string[] = [];
+        const onUpdate = logUpdates(messages);
+        task.on('update', onUpdate);
         const r = await task.toPromise();
-        assert.strictEqual(task.status, 'fulfilled');
-        assert.strictEqual(r, 1);
-        assert.strictEqual(i, 1);
-        assert.ok(task.startTime >= t);
-        assert.ok(task.finishTime <= Date.now());
+        expect(messages).toStrictEqual([
+            "task:running",
+            "task:fulfilled"
+        ]);
+        expect(r).toEqual(1);
+        expect(i).toEqual(1);
     });
 
-    it('should use promise like', async function () {
-        const t = Date.now();
+    it('should cancel', async function () {
         let i = 0;
         const task = new Task(async () => {
-            await delay(50);
-            return ++i;
+            await delay(20);
+            i++;
+        }, {
+            cancel: () => {
+                i++;
+            }
         });
-        task.execute();
-        assert.strictEqual(task.status, 'running');
-        const r = await task;
-        assert.strictEqual(task.status, 'fulfilled');
-        assert.strictEqual(r, 1);
-        assert.strictEqual(i, 1);
-        assert.ok(task.startTime >= t);
-        assert.ok(task.finishTime <= Date.now());
+        const messages: string[] = [];
+        const onUpdate = logUpdates(messages);
+        task.on('update', onUpdate);
+        await task.start();
+        await delay(10);
+        task.cancel();
+        await task.toPromise();
+        expect(messages).toStrictEqual([
+            "task:running",
+            "task:cancelling",
+            "task:cancelled"
+        ]);
+        expect(i).toEqual(1);
     });
 
     it('should execute child tasks', async function () {
@@ -69,12 +86,33 @@ describe('Task', function () {
                 }
             ]
         });
-        task.execute();
-        assert.strictEqual(task.status, 'running');
         const r = await task.toPromise();
-        assert.strictEqual(task.status, 'fulfilled');
-        assert.strictEqual(r, 10);
-        assert.ok(task.children);
+        expect(task.status).toEqual('fulfilled');
+        expect(r).toEqual(10);
+        expect(task.children).toBeDefined();
+    });
+
+    it('should add child tasks on the fly', async function () {
+        let i = 0;
+        const task = new Task((task1) => task1.children.length, {
+            children: async () => {
+                return [
+                    new Task(() => {
+                        i++;
+                    }, {name: 't1'}),
+                    new Task(async () => {
+                        i++;
+                    }, {name: 't2'})
+                ]
+            }
+        });
+        await task.toPromise();
+        expect(i).toEqual(2);
+        expect(task.status).toEqual('fulfilled');
+        expect(task.children).toBeDefined();
+        expect(task.children.length).toEqual(2);
+        expect(task.children[0].status).toEqual('fulfilled');
+        expect(task.children[1].status).toEqual('fulfilled');
     });
 
     it('should cancel child tasks', async function () {
@@ -86,9 +124,10 @@ describe('Task', function () {
             children.push(new Task(
                 async (task) => {
                     await delay(50);
-                    if (task.isRunning)
+                    if (task.status === 'running')
                         fulfilled.push(x);
                 }, {
+                    name: 't' + x,
                     cancel: async () => {
                         await delay(5);
                         cancelled.push(x);
@@ -96,82 +135,125 @@ describe('Task', function () {
                 }
             ))
         }
-        const task = new Task(() => 0, {children, bail: true, concurrency: 10});
-        task.execute();
-        assert.strictEqual(task.status, 'running');
+        const task = new Task(() => 0, {
+            children,
+            concurrency: 10,
+            name: 'main'
+        });
+        task.start();
         await delay(10);
         task.cancel();
         await task.toPromise();
-        assert.strictEqual(task.isCancelled, true);
-        assert.strictEqual(task.status, 'cancelled');
+        expect(task.status).toEqual('cancelled');
         for (const t of task.children) {
-            assert.strictEqual(t.status, 'cancelled');
+            expect(t.status).toEqual('cancelled');
         }
-        assert.deepStrictEqual(fulfilled, []);
-        assert.deepStrictEqual(cancelled, [1, 2, 3, 4, 5]);
+        expect(fulfilled.length).toEqual(0);
+        expect(cancelled).toEqual([5, 4, 3, 2, 1]);
     });
 
-    it('should return child tasks within children function in options', async function () {
+    it('should cancel remaining children, if any child fails (bail=true, serial=true)', async function () {
         let i = 0;
-        const task = new Task((task1) => task1.children.length, {
-            children: async () => {
-                return [
-                    new Task(() => {
-                        i++;
-                    }),
-                    new Task(async () => {
-                        i++;
-                    })
-                ]
-            }
-        });
-        await task;
-        assert.strictEqual(i, 2);
-        assert.strictEqual(task.status, 'fulfilled');
-        assert.ok(task.children);
-        assert.strictEqual(task.children.length, 2);
-        assert.strictEqual(task.children[0].status, 'fulfilled');
-        assert.strictEqual(task.children[1].status, 'fulfilled');
-    });
-
-    it('should fail if one child fails, but execute all children', async function () {
-        let i = 0;
+        let c = 0;
         const task = new Task([
-            new Task(() => {
-                throw new Error('test');
-            }, {name: 'task1'}),
             new Task(async () => {
-                i++;
-            }, {name: 'task2'})
-        ]);
-        await task.catch(noOp);
-        assert.strictEqual(task.status, 'failed');
-        assert.strictEqual(i, 1);
-        assert.ok(task.children);
-        assert.strictEqual(task.children.length, 2);
-        assert.strictEqual(task.children[0].status, 'failed');
-        assert.strictEqual(task.children[0].name, 'task1');
-        assert.strictEqual(task.children[1].status, 'fulfilled');
-        assert.strictEqual(task.children[1].name, 'task2');
-    });
-
-    it('should cancel other children, if one child fails (bail=true)', async function () {
-        let i = 0;
-        const task = new Task([
-            new Task(() => {
+                await delay(10);
                 throw new Error('test');
             }),
             new Task(async () => {
+                await delay(50);
                 i++;
-            })
-        ], {bail: true});
-        await task.catch(noOp);
-        assert.strictEqual(i, 0);
-        assert.strictEqual(task.status, 'failed');
-        assert.ok(task.children);
-        assert.strictEqual(task.children.length, 2);
-        assert.strictEqual(task.children[0].status, 'failed');
-        assert.strictEqual(task.children[1].status, 'cancelled');
+            }, {cancel: () => c++}),
+            new Task(async () => {
+                await delay(60);
+                i++;
+            }, {cancel: () => c++}),
+        ], {bail: true, serial: true});
+        await task.toPromise().catch(noOp);
+        expect(task.status).toEqual('failed');
+        expect(i).toEqual(0);
+        expect(c).toEqual(0);
+        expect(task.children[0].status).toEqual('failed');
+        expect(task.children[1].status).toEqual('cancelled');
+        expect(task.children[2].status).toEqual('cancelled');
+    });
+
+    it('should cancel running children, if any child fails (bail=true, serial=false)', async function () {
+        let i = 0;
+        let c = 0;
+        const task = new Task([
+            new Task(async () => {
+                await delay(10);
+                throw new Error('test');
+            }),
+            new Task(async () => {
+                await delay(50);
+                i++;
+            }, {cancel: () => c++}),
+            new Task(async () => {
+                await delay(60);
+                i++;
+            }, {cancel: () => c++}),
+        ], {bail: true, serial: false});
+        await task.toPromise().catch(noOp);
+        expect(task.status).toEqual('failed');
+        expect(i).toEqual(0);
+        expect(c).toEqual(2);
+        expect(task.children[0].status).toEqual('failed');
+        expect(task.children[1].status).toEqual('cancelled');
+        expect(task.children[2].status).toEqual('cancelled');
+    });
+
+    it('should fail but run all children, if any child fails (bail=false, serial=false)', async function () {
+        let i = 0;
+        let c = 0;
+        const task = new Task([
+            new Task(async () => {
+                await delay(10);
+                throw new Error('test');
+            }),
+            new Task(async () => {
+                await delay(50);
+                i++;
+            }, {cancel: () => c++}),
+            new Task(async () => {
+                await delay(60);
+                i++;
+            }, {cancel: () => c++}),
+        ], {bail: false, serial: false});
+        await task.toPromise().catch(noOp);
+        expect(task.status).toEqual('failed');
+        expect(i).toEqual(2);
+        expect(c).toEqual(0);
+        expect(task.children[0].status).toEqual('failed');
+        expect(task.children[1].status).toEqual('fulfilled');
+        expect(task.children[2].status).toEqual('fulfilled');
+    });
+
+    it('should fail but run all children, if any child fails (bail=false, serial=true)', async function () {
+        let i = 0;
+        let c = 0;
+        const task = new Task([
+            new Task(async () => {
+                await delay(10);
+                throw new Error('test');
+            }),
+            new Task(async () => {
+                await delay(50);
+                i++;
+            }, {cancel: () => c++}),
+            new Task(async () => {
+                await delay(60);
+                i++;
+            }, {cancel: () => c++}),
+        ], {bail: false, serial: true});
+        await task.toPromise().catch(noOp);
+        expect(task.status).toEqual('failed');
+        expect(i).toEqual(2);
+        expect(c).toEqual(0);
+        expect(task.children[0].status).toEqual('failed');
+        expect(task.children[1].status).toEqual('fulfilled');
+        expect(task.children[2].status).toEqual('fulfilled');
     });
 
     it('should execute child tasks concurrent', async function () {
@@ -186,13 +268,13 @@ describe('Task', function () {
                 arr.push(2);
             })
         ], {concurrency: 10});
-        await task.execute().toPromise();
-        assert.strictEqual(arr.length, 2);
-        assert.strictEqual(task.status, 'fulfilled');
-        assert.ok(task.children);
-        assert.strictEqual(task.children.length, 2);
-        assert.strictEqual(arr[0], 2);
-        assert.strictEqual(arr[1], 1);
+        await task.toPromise();
+        expect(arr.length).toEqual(2);
+        expect(task.status).toEqual('fulfilled');
+        expect(task.children).toBeDefined();
+        expect(task.children.length).toEqual(2);
+        expect(arr[0]).toEqual(2);
+        expect(arr[1]).toEqual(1);
     });
 
     it('should limit concurrent tasks', async function () {
@@ -207,59 +289,55 @@ describe('Task', function () {
             }).on('finish', () => running--));
         }
         const task = new Task(a, {concurrency: 2});
-        await task.execute().toPromise();
-    });
-
-    it('should call "cancel" function if task is running and other child fails', async function () {
-        let i = 0;
-        let cancelled = false;
-        let fulfilled = false;
-        const task = new Task([
-            new Task(
-                async () => {
-                    await delay(20);
-                    if (!cancelled)
-                        fulfilled = true;
-                }, {
-                    cancel: async () => {
-                        await delay(10);
-                        cancelled = true;
-                    }
-                }
-            ),
-            async () => {
-                throw new Error('test')
-            }
-        ], {bail: true, concurrency: 10});
-        await task.execute().toPromise(true);
-        assert.strictEqual(i, 0);
-        assert.strictEqual(task.status, 'failed');
-        assert.ok(task.children);
-        assert.strictEqual(cancelled, true);
-        assert.strictEqual(fulfilled, false);
-        assert.strictEqual(task.children.length, 2);
-        assert.strictEqual(task.children[0].status, 'cancelled');
-        assert.strictEqual(task.children[1].status, 'failed');
+        await task.toPromise();
     });
 
     it('should wait for dependent task to complete before execute', async function () {
+
         const r = [];
         const newFn = (i: number) => (
             async () => {
                 await delay(50 + (i * 5));
                 r.push(i);
             });
+
         const t5 = new Task(newFn(5), {name: 't5'});
         const t1 = new Task(newFn(1), {name: 't1', dependencies: [t5]});
         const t4 = new Task(newFn(4), {name: 't4', dependencies: ['t1']});
         const t2 = new Task(newFn(2), {name: 't2', dependencies: [t4]});
         const t3 = new Task(newFn(3), {name: 't3', dependencies: ['t4']});
-        const task = new Task([t1, t2, t3, t4, t5]);
-        task.execute();
-        assert.strictEqual(task.status, 'running');
+        const task = new Task([t1, t2, t3, t4, t5], {name: 'main'});
+
+        const messages: string[] = [];
+        const onUpdate = logUpdates(messages);
+        task.on('update', onUpdate);
+        t1.on('update', onUpdate);
+        t2.on('update', onUpdate);
+        t3.on('update', onUpdate);
+        t4.on('update', onUpdate);
+        t5.on('update', onUpdate);
+
         await task.toPromise();
-        assert.strictEqual(task.status, 'fulfilled');
-        assert.deepStrictEqual(r, [5, 1, 4, 2, 3]);
+        expect(task.status).toEqual('fulfilled');
+        expect(r).toEqual([5, 1, 4, 2, 3]);
+        expect(messages).toStrictEqual([
+            "main:running",
+            "t1:waiting:t5",
+            "t2:waiting:t4",
+            "t3:waiting:t4",
+            "t4:waiting:t1",
+            "t5:running",
+            "t5:fulfilled",
+            "t1:running",
+            "t1:fulfilled",
+            "t4:running",
+            "t4:fulfilled",
+            "t2:running",
+            "t3:running",
+            "t2:fulfilled",
+            "t3:fulfilled",
+            "main:fulfilled"
+        ]);
     });
 
     it('should fail if dependent task fails', async function () {
@@ -276,15 +354,39 @@ describe('Task', function () {
         const t4 = new Task(newFn(4, true), {name: 't4', dependencies: ['t1']});
         const t2 = new Task(newFn(2), {name: 't2', dependencies: [t4]});
         const t3 = new Task(newFn(3), {name: 't3', dependencies: ['t4']});
-        const task = new Task([t1, t2, t3, t4, t5]);
-        task.execute();
-        assert.strictEqual(task.status, 'running');
-        await task.toPromise(true);
-        assert.strictEqual(task.status, 'failed');
-        assert.deepStrictEqual(r, [5, 1]);
-        assert.strictEqual(t4.status, 'failed');
-        assert.strictEqual(t2.status, 'failed');
-        assert.strictEqual(t3.status, 'failed');
+        const task = new Task([t1, t2, t3, t4, t5], {name: 'main'});
+
+        const messages: string[] = [];
+        const onUpdate = logUpdates(messages);
+        task.on('update', onUpdate);
+        t1.on('update', onUpdate);
+        t2.on('update', onUpdate);
+        t3.on('update', onUpdate);
+        t4.on('update', onUpdate);
+        t5.on('update', onUpdate);
+
+        await task.toPromise().catch(noOp);
+        expect(task.status).toEqual('failed');
+        expect(r).toEqual([5, 1]);
+        expect(t4.status).toEqual('failed');
+        expect(t2.status).toEqual('failed');
+        expect(t3.status).toEqual('failed');
+        expect(messages).toStrictEqual([
+            "main:running",
+            "t1:waiting:t5",
+            "t2:waiting:t4",
+            "t3:waiting:t4",
+            "t4:waiting:t1",
+            "t5:running",
+            "t5:fulfilled",
+            "t1:running",
+            "t1:fulfilled",
+            "t4:running",
+            "t4:failed",
+            "t2:failed",
+            "t3:failed",
+            "main:failed"
+        ]);
     });
 
     it('should cancel if dependent task cancels', async function () {
@@ -300,16 +402,15 @@ describe('Task', function () {
         const t2 = new Task(newFn(2), {name: 't2', dependencies: [t4]});
         const t3 = new Task(newFn(3), {name: 't3', dependencies: ['t4']});
         const task = new Task([t1, t2, t3, t4, t5]);
-        task.execute();
-        assert.strictEqual(task.status, 'running');
+        task.start();
         await t5.toPromise();
         t4.cancel();
-        await task.toPromise(true);
-        assert.strictEqual(task.status, 'fulfilled');
-        assert.deepStrictEqual(r, [5, 1]);
-        assert.strictEqual(t4.status, 'cancelled');
-        assert.strictEqual(t2.status, 'cancelled');
-        assert.strictEqual(t3.status, 'cancelled');
+        await task.toPromise();
+        expect(task.status).toEqual('fulfilled');
+        expect(r).toEqual([5, 1]);
+        expect(t4.status).toEqual('cancelled');
+        expect(t2.status).toEqual('cancelled');
+        expect(t3.status).toEqual('cancelled');
     });
 
 });

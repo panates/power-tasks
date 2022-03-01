@@ -1,4 +1,3 @@
-import assert from 'assert';
 import './env';
 import {Task, TaskQueue} from '../src';
 import {delay} from '../src/utils';
@@ -9,7 +8,7 @@ describe('TaskQueue', function () {
 
     it('should construct', function () {
         const queue = new TaskQueue();
-        assert.strictEqual(queue.maxQueue, undefined);
+        expect(queue.maxQueue).toEqual(undefined);
     });
 
     it('should construct with options', function () {
@@ -17,9 +16,9 @@ describe('TaskQueue', function () {
             maxQueue: 100,
             concurrency: 5
         });
-        assert.strictEqual(queue.paused, false);
-        assert.strictEqual(queue.maxQueue, 100);
-        assert.strictEqual(queue.concurrency, 5);
+        expect(queue.paused).toEqual(false);
+        expect(queue.maxQueue).toEqual(100);
+        expect(queue.concurrency).toEqual(5);
     });
 
     it('should not exceed maxQueue', function () {
@@ -27,7 +26,7 @@ describe('TaskQueue', function () {
             maxQueue: 1
         });
         queue.enqueue(noOp);
-        assert.throws(() => queue.enqueue(noOp), /exceeded/);
+        expect(() => queue.enqueue(noOp)).toThrow(/exceeded/);
     });
 
     it('should execute sync function task', function (done) {
@@ -52,12 +51,14 @@ describe('TaskQueue', function () {
         }));
     });
 
-    it('should task return a result', async function () {
+    it('should task return a TaskInstance', async function () {
         const queue = new TaskQueue();
-        const result = await queue.enqueue(() => {
+        const task = queue.enqueue(() => {
             return 123;
         });
-        assert.strictEqual(result, 123);
+        expect(task).toBeInstanceOf(Task);
+        const r = await task.toPromise();
+        expect(r).toStrictEqual(123);
     });
 
     it('should emit "enqueue" event', function (done) {
@@ -74,7 +75,7 @@ describe('TaskQueue', function () {
         let i = 0;
         queue.on('finish', () => {
             try {
-                assert.strictEqual(i, 2);
+                expect(i).toEqual(2);
             } catch (e) {
                 return done(e);
             }
@@ -92,7 +93,7 @@ describe('TaskQueue', function () {
         const queue = new TaskQueue();
         const p = queue.enqueue(() => {
         });
-        assert(p instanceof Task);
+        expect(p).toBeInstanceOf(Task);
     });
 
     it('should add a task to first location in the queue', function (done) {
@@ -100,7 +101,7 @@ describe('TaskQueue', function () {
         const q = [];
         queue.on('finish', () => {
             try {
-                assert.deepStrictEqual(q, [2, 1]);
+                expect(q).toEqual([2, 1]);
             } catch (e) {
                 return done(e);
             }
@@ -114,13 +115,16 @@ describe('TaskQueue', function () {
         }, true);
     });
 
-    it('should execute next on error', function () {
+    it('should execute next on error', function (done) {
         const queue = new TaskQueue();
-        queue.enqueue(() => {
+        queue.enqueue(async () => {
+            await delay(10);
             throw new Error('test');
-        }).catch(() => {
         });
-        return queue.enqueue(() => Promise.resolve());
+        queue.enqueue(async () => {
+            await delay(10);
+            done();
+        });
     });
 
     it('should pause', function (done) {
@@ -133,7 +137,7 @@ describe('TaskQueue', function () {
         }, 250);
         queue.enqueue(() => {
             try {
-                assert.strictEqual(i, 1);
+                expect(i).toEqual(1);
             } catch (e) {
                 done(e);
             }

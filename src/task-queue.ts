@@ -96,7 +96,7 @@ export class TaskQueue extends TypedEventEmitterClass<TaskQueueEvents>(AsyncEven
                 if (!this._running.size)
                     this.emit('finish');
             })
-            task.execute();
+            task.start();
         }
     }
 

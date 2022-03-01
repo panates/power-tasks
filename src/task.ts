@@ -1,10 +1,12 @@
+import {EventEmitter} from 'events';
+import * as os from 'os';
 import {AsyncEventEmitter, TypedEventEmitterClass} from 'strict-typed-events';
 import {plural} from './utils';
 
 export type TaskFunction = (task: Task) => any | Promise<any>;
 export type TaskLike = Task | TaskFunction;
-export type CancelFunction = (task: Task) => void | Promise<void>;
-export type TaskStatus = 'idle' | 'running' | 'fulfilled' | 'failed' | 'cancelling' | 'cancelled';
+export type CancelFunction = (task: Task) => any | Promise<any>;
+export type TaskStatus = 'idle' | 'waiting' | 'running' | 'fulfilled' | 'failed' | 'cancelling' | 'cancelled';
 
 export interface TaskOptions {
     name?: any;
@@ -14,11 +16,28 @@ export interface TaskOptions {
     dependencies?: (Task | string)[];
     concurrency?: number;
     bail?: boolean;
+    serial?: boolean;
+    cancelTimeout?: number;
+}
+
+export interface TaskUpdateValues {
+    status?: TaskStatus;
+    message?: string;
+    error?: any;
+    result?: any;
 }
 
 export interface TaskEvents {
-    start: () => void | Promise<void>;
-    finish: (err?: any, result?: any) => void | Promise<void>;
+    start: (task: Task) => void;
+    finish: (task: Task) => void;
+    update: (values: TaskUpdateValues, task: Task) => void;
+}
+
+class TaskContext extends EventEmitter {
+    allTasks = new Set<Task>();
+    executingTasks = 0;
+    queue = new Set<Task>();
+    concurrency!: number;
 }
 
 const noOp = () => void (0);
@@ -29,9 +48,10 @@ export class Task<T = any> extends TypedEventEmitterClass<TaskEvents>(AsyncEvent
     protected _children?: Task[];
     protected _status: TaskStatus = 'idle';
     protected _message?: string;
-    protected _startTime?: number;
-    protected _finishTime?: number;
-    protected _error?: Error;
+    protected _waitingDependencies?: Task[];
+    protected _context!: TaskContext;
+    protected _executeDuration?: number;
+    protected _error?: any;
     protected _result?: T;
 
     constructor(children: TaskLike[] | ((task: Task) => TaskLike[] | Promise<TaskLike[]>),
@@ -70,37 +90,21 @@ export class Task<T = any> extends TypedEventEmitterClass<TaskEvents>(AsyncEvent
         return this._status;
     }
 
-    get isIdle(): boolean {
-        return this._status === 'idle';
-    }
-
-    get isRunning(): boolean {
-        return this._status === 'running';
-    }
-
-    get isFailed(): boolean {
-        return this._status === 'failed';
-    }
-
-    get isCancelling(): boolean {
-        return this._status === 'cancelling';
-    }
-
-    get isCancelled(): boolean {
-        return this._status === 'cancelled';
+    get isStarted(): boolean {
+        return this.status === 'running' || this.status === 'cancelling' || this.status === 'waiting';
     }
 
     get isFinished(): boolean {
-        return this._status === 'fulfilled' || this._status === 'failed' ||
-            this._status === 'cancelled';
+        return this.status === 'fulfilled' || this.status === 'failed' ||
+            this.status === 'cancelled';
     }
 
-    get startTime(): number | undefined {
-        return this._startTime
+    get isFailed(): boolean {
+        return this.status === 'failed';
     }
 
-    get finishTime(): number | undefined {
-        return this._finishTime
+    get executeDuration(): number | undefined {
+        return this._executeDuration;
     }
 
     get result(): any {
@@ -111,207 +115,282 @@ export class Task<T = any> extends TypedEventEmitterClass<TaskEvents>(AsyncEvent
         return this._error;
     }
 
-    execute(): this {
-        if (this.isRunning)
+    get waitingFor(): Task | undefined {
+        return this._waitingDependencies?.find(t => !t.isFinished);
+    }
+
+    start(): this {
+        if (this.isStarted || this._context)
             return this;
-        this.once('finish', (err, v) => {
-            this._result = v;
-            this._error = err;
-            this._finishTime = Date.now();
-        });
-        this._execute().catch(noOp);
+        const ctx = this._context = new TaskContext();
+        ctx.concurrency = this.options.concurrency || os.cpus().length;
+        ctx.allTasks.add(this);
+        ctx.setMaxListeners(Number.MAX_SAFE_INTEGER);
+        this._fetchChildren()
+            .then(() => {
+                this._start();
+            })
+            .catch(error => {
+                this._update({
+                    status: 'failed',
+                    error,
+                    message: error instanceof Error ? error.message : '' + error
+                });
+            });
         return this;
     }
 
     cancel(): this {
-        const promises: Promise<void>[] = [];
-        if (!(this.isFinished || this.isCancelling)) {
-            const isRunning = this.isRunning;
-            this._status = 'cancelling';
-            this._message = 'Cancelling';
-            if (isRunning) {
-                const cancelFn = this.options.cancel;
-                if (cancelFn)
-                    promises.push((async () => cancelFn(this))().catch(noOp));
+        if (!this.isStarted) {
+            this._update({status: 'cancelled', message: 'Cancelled'});
+            return this;
+        }
+        if (this.isFinished || this.status === 'cancelling')
+            return this;
+        const timeout = this.options.cancelTimeout || 5000;
+        const cancelFn = this.options.cancel;
+        if (cancelFn || this._children?.length)
+            this._update({status: 'cancelling', message: 'Cancelling'});
+        let timer: NodeJS.Timer;
+        let timedOut = false;
+        if (timeout) {
+            timer = setTimeout(() => {
+                timedOut = true;
+                this._update({status: 'cancelled', message: 'Cancelled'});
+            }, timeout).unref();
+        }
+        this._cancelChildren()
+            .catch(noOp)
+            .then(() => {
+                if (!timedOut && cancelFn)
+                    return cancelFn(this);
+            })
+            .finally(() => {
+                clearTimeout(timer);
+                this._update({status: 'cancelled', message: 'Cancelled'});
+            })
+        return this;
+    }
+
+    async toPromise(): Promise<any> {
+        if (this.isFinished)
+            return this.status === 'fulfilled' ? this._result : undefined;
+        if (!this.isStarted)
+            this.start();
+        return new Promise((resolve, reject) => {
+            this.once('finish', () => {
+                if (this.isFailed)
+                    return reject(this.error);
+                resolve(this.result);
+            })
+        })
+    }
+
+    protected _start(): void {
+        if (this.isStarted)
+            return;
+        if (this.options.dependencies) {
+            this._waitingDependencies = [];
+            for (const s of this.options.dependencies) {
+                for (const t of this._context.allTasks.values()) {
+                    if (typeof s === 'string' ? t.name === s : (t === s)) {
+                        this._waitingDependencies.push(t);
+                    }
+                }
             }
         }
-        if (this._children)
-            promises.push(this._cancelChildren());
+        this._pulse();
+    }
 
-        Promise.all(promises)
-            .finally(() => this._pulse())
-        return this;
+    protected _pulse() {
+        if (this.isFinished || this._status === 'cancelling')
+            return;
+
+        if (this._waitingDependencies) {
+            for (const t of this._waitingDependencies) {
+                if (!t.isFinished) {
+                    this._update({
+                        status: 'waiting',
+                        message: 'Waiting for ' + (t.name ? '"' + t.name + '"' : '') + ' dependencies'
+                    });
+                    t.once('finish', async () => {
+                        if (t.isFailed) {
+                            await this._cancelChildren().catch(noOp);
+                            const error: any = new Error('Failed due to dependent task' +
+                                (t.name ? ' (' + t.name + ')' : ''));
+                            error.dependentTask = t;
+                            error.dependentError = t.dependentError || t.error;
+                            this._update({
+                                status: 'failed',
+                                error,
+                                message: 'Dependent task failed. ' + error.dependentError.message
+                            });
+                            return;
+                        }
+                        if (t.status === 'cancelled') {
+                            await this._cancelChildren().catch(noOp);
+                            this._update({
+                                status: 'cancelled',
+                                message: 'Canceled due to dependent task' +
+                                    (t.name ? ' (' + t.name + ')' : '')
+                            });
+                            return;
+                        }
+                        this._pulse();
+                    });
+                    return;
+                }
+            }
+            this._waitingDependencies = undefined;
+        }
+        this._update({status: 'running', message: 'Running'});
+        const options = this.options;
+        let failedChildren = 0;
+        let childrenLeft = 0;
+        let startedChildren = 0;
+        const children = this._children;
+        if (children) {
+            for (const c of children) {
+                if (c.isStarted) {
+                    if (options.serial) {
+                        c.once('finish', () => this._pulse());
+                        return;
+                    }
+                    startedChildren++;
+                }
+                if (c.isFailed)
+                    failedChildren++;
+                if (!c.isFinished)
+                    childrenLeft++;
+            }
+
+            if (failedChildren) {
+                if (options.bail) {
+                    // Cancel remaining children
+                    this._cancelChildren().finally(() => {
+                        const error = new Error(`${failedChildren} child ${plural('task', failedChildren > 1)} failed`);
+                        this._update({status: 'failed', error, message: error.message});
+                    });
+                    return;
+                }
+                // Wait for running children before fail
+                if (startedChildren) {
+                    this._context.once('pulse', () => this._pulse());
+                    return;
+                }
+                if (!childrenLeft) {
+                    const error = new Error(`${failedChildren} child ${plural('task', failedChildren > 1)} failed`);
+                    this._update({status: 'failed', error, message: error.message});
+                    return;
+                }
+            }
+
+            for (const child of children) {
+                if (child.isFinished || child.isStarted)
+                    continue;
+                if (this._context.executingTasks >= this._context.concurrency) {
+                    this._context.once('pulse', () => this._pulse());
+                    return;
+                }
+                child._start();
+                if (options.serial) {
+                    child.once('finish', () => this._pulse());
+                    return;
+                }
+                startedChildren++;
+            }
+
+            if (startedChildren) {
+                this._context.once('pulse', () => this._pulse());
+                return;
+            }
+        }
+
+        const t = Date.now();
+        this._context.executingTasks++;
+        (async () => this._executeFn(this))()
+            .then((result: any) => {
+                this._context.executingTasks--;
+                this._executeDuration = Date.now() - t;
+                this._update({
+                    status: 'fulfilled',
+                    message: 'Task completed',
+                    result
+                });
+            })
+            .catch(error => {
+                this._context.executingTasks--;
+                this._executeDuration = Date.now() - t;
+                this._update({
+                    status: 'failed',
+                    error,
+                    message: error instanceof Error ? error.message : '' + error
+                });
+            })
+    }
+
+    protected _update(prop: TaskUpdateValues) {
+        const oldFinished = this.isFinished;
+        const o: TaskUpdateValues = {};
+        let i = 0;
+        if (prop.status && this._status !== prop.status) {
+            this._status = o.status = prop.status;
+            i++;
+        }
+        if (prop.message && this._message !== prop.message) {
+            this._message = o.message = prop.message;
+            i++;
+        }
+        if (prop.error && this._error !== prop.error) {
+            this._error = o.error = prop.error;
+            i++;
+        }
+        if (prop.result && this._result !== prop.result) {
+            this._result = o.result = prop.result;
+            i++;
+        }
+        if (i) {
+            if (this.status !== 'waiting')
+                this._waitingFor = undefined;
+            this.emitAsync('update', o, this).catch(noOp);
+            if (this.isFinished && !oldFinished) {
+                this.emitAsync('finish', this).catch(noOp);
+            }
+            this._context.emit('pulse');
+        }
+    }
+
+    protected async _fetchChildren(): Promise<void> {
+        const ctx = this._context;
+        const childrenFn = this._options.children;
+        if (typeof childrenFn === 'function') {
+            const children = await childrenFn(this);
+            if (Array.isArray(children))
+                this._children = wrapChildren(children, this.options);
+        }
+        if (this._children) {
+            for (const child of this._children) {
+                child._context = ctx;
+                ctx.allTasks.add(child);
+                await child._fetchChildren();
+            }
+        }
     }
 
     protected async _cancelChildren(): Promise<void> {
         const promises: Promise<void>[] = [];
         if (this._children) {
-            this._children.forEach(c => {
-                c.cancel();
-                if (c.isCancelling)
-                    promises.push(c.toPromise(true));
-            });
-        }
-        return Promise.all(promises).then();
-    }
-
-    then<TResult1 = T, TResult2 = never>(
-        onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null,
-        onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null
-    ): Promise<TResult1 | TResult2> {
-        if (this.isIdle)
-            this.execute();
-        return this.toPromise().then(onfulfilled, onrejected);
-    }
-
-    catch<TResult = never>(
-        onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null
-    ): Promise<T | TResult> {
-        if (this.isIdle)
-            this.execute();
-        return this.toPromise().catch(onrejected);
-    }
-
-    finally(onfinally?: (() => void) | undefined | null): Promise<T> {
-        if (this.isIdle)
-            this.execute();
-        return this.toPromise().finally(onfinally);
-    }
-
-    async toPromise(suspendErrors?: boolean): Promise<any> {
-        if (this.isFinished)
-            return this._result;
-        if (!(this.isRunning || this.isCancelling))
-            return;
-        return new Promise((resolve, reject) => {
-            this.once('finish', (err: any, result?: any) => {
-                if (err && !suspendErrors)
-                    reject(err);
-                else resolve(result);
-            })
-        })
-    }
-
-    protected async _execute(): Promise<void> {
-        this._status = 'running';
-        this._startTime = Date.now();
-        this._finishTime = undefined;
-        this._message = '';
-        await this.emitAsync('start').catch(noOp);
-
-        if (typeof this._options.children === 'function') {
-            this._children = undefined;
-            const children = await this._options.children(this);
-            if (Array.isArray(children))
-                this._children = wrapChildren(children, this.options);
-        }
-
-        this._pulse();
-    }
-
-    protected _pulse() {
-        if (this.isFinished)
-            return;
-        const children = this._children;
-        let failedCount = 0;
-        let childrenLeft = 0;
-        let running = 0;
-        if (children) {
-            for (const c of children) {
-                if (c.isRunning)
-                    running++;
-                if (c.isFailed)
-                    failedCount++;
-                if (!c.isFinished) {
-                    childrenLeft++;
+            for (let i = this._children.length - 1; i >= 0; i--) {
+                const child = this._children[i];
+                if (!child.isFinished) {
+                    child.cancel();
+                    promises.push(child.toPromise());
                 }
             }
-
-            const options = this.options;
-            for (const task of children) {
-                if (failedCount && options.bail) {
-                    this._status = 'failed';
-                    this._message = 'Child task failed.\n' + task._message;
-                    const error: any = new Error(task._message);
-                    this._cancelChildren()
-                        .catch(noOp)
-                        .finally(() => this.emitAsync('finish', error));
-                    return;
-                }
-                if (!task.isIdle)
-                    continue;
-                // Check if tasks have unfinished dependencies
-                const dependencies = task.options.dependencies?.map(x =>
-                    typeof x === 'string' ? children.find(t => t.name === x) : x
-                );
-                if (dependencies) {
-                    // Check if dependent job failed. If so, we can not continue this job
-                    let depTask = dependencies.find((dep) =>
-                        children.find(t => t !== task && t === dep));
-                    if (depTask) {
-                        if (depTask.isFailed) {
-                            childrenLeft--;
-                            failedCount++;
-                            task._status = 'failed';
-                            task._message = 'Dependent task failed';
-                            const error: any = new Error(task._message);
-                            error.dependency = depTask;
-                            continue;
-                        }
-                        if (depTask.isCancelled || depTask.isCancelling) {
-                            childrenLeft--;
-                            failedCount++;
-                            task._status = 'cancelled';
-                            task._message = 'Dependent task cancelled';
-                            const error: any = new Error(task._message);
-                            error.dependency = depTask;
-                            continue;
-                        }
-                        if (!depTask.isFinished) {
-                            task._message = 'Waiting dependencies';
-                            continue;
-                        }
-                    }
-                }
-
-                running++;
-                task.execute();
-                task.once('finish', () => this._pulse());
-
-                if (!options.concurrency || running >= options.concurrency)
-                    break;
-            }
         }
-
-        if (!childrenLeft) {
-            if (failedCount) {
-                const error: any = new Error(`${failedCount} child ${plural('task', failedCount)} failed`);
-                error.failed = failedCount;
-                this._status = 'failed';
-                this._message = error.message;
-                this.emitAsync('finish', error).catch(noOp);
-                return;
-            }
-            if (this.isCancelling) {
-                this._status = 'cancelled';
-                this._message = 'Cancelled';
-                this.emitAsync('finish').catch(noOp);
-                return;
-            }
-
-            (async () => this._executeFn(this))()
-                .then((v: any) => {
-                    this._status = 'fulfilled';
-                    this._message = 'Task completed';
-                    this.emitAsync('finish', undefined, v).catch(noOp);
-                })
-                .catch(e => {
-                    this._status = 'failed';
-                    this._message = e instanceof Error ? e.message : '' + e;
-                    this.emitAsync('finish', e).catch(noOp);
-                })
-        }
+        await Promise.all(promises);
     }
+
 }
 
 function wrapChildren(arr: any[], options: TaskOptions): Task[] | undefined {
