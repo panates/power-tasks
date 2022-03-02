@@ -317,7 +317,6 @@ describe('Task', function () {
     });
 
     it('should wait for dependent task to complete before execute', async function () {
-
         const r = [];
         const newFn = (i: number) => (
             async () => {
@@ -437,5 +436,43 @@ describe('Task', function () {
         expect(t3.status).toEqual('cancelled');
     });
 
+    it('should wait exclusive tasks', async function () {
+        const r = [];
+        const newFn = (i: number) => (
+            async () => {
+                await delay(50);
+                r.push(i);
+            });
+
+        const t1 = new Task(newFn(1), {name: 't1'});
+        const t2 = new Task(newFn(2), {name: 't2', exclusive: true});
+        const t3 = new Task(newFn(3), {name: 't3'});
+        const t4 = new Task(newFn(4), {name: 't4'});
+        const task = new Task([t1, t2, t3, t4], {name: 'main', concurrency: 10});
+
+        const messages: string[] = [];
+        const onUpdate = logUpdates(messages);
+        task.on('update', onUpdate);
+        t1.on('update', onUpdate);
+        t2.on('update', onUpdate);
+        t3.on('update', onUpdate);
+        t4.on('update', onUpdate);
+
+        await task.toPromise();
+        expect(task.status).toEqual('fulfilled');
+        expect(r).toEqual([1, 2, 3, 4]);
+        expect(messages).toStrictEqual([
+            "main:running",
+            "t1:running",
+            "t2:running",
+            "t1:fulfilled",
+            "t2:fulfilled",
+            "t3:running",
+            "t4:running",
+            "t3:fulfilled",
+            "t4:fulfilled",
+            "main:fulfilled"
+        ]);
+    });
 
 });

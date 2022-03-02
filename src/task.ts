@@ -17,6 +17,7 @@ export interface TaskOptions {
     concurrency?: number;
     bail?: boolean;
     serial?: boolean;
+    exclusive?: boolean;
     cancelTimeout?: number;
 }
 
@@ -243,8 +244,8 @@ export class Task<T = any> extends TypedEventEmitterClass<TaskEvents>(AsyncEvent
         if (children) {
             for (const c of children) {
                 if (c.isStarted) {
-                    if (options.serial) {
-                        c.once('finish', () => this._pulse());
+                    if (options.serial || c.options.exclusive) {
+                        this._context.once('pulse', () => this._pulse());
                         return;
                     }
                     startedChildren++;
@@ -284,11 +285,9 @@ export class Task<T = any> extends TypedEventEmitterClass<TaskEvents>(AsyncEvent
                     return;
                 }
                 child._start();
-                if (options.serial) {
-                    child.once('finish', () => this._pulse());
-                    return;
-                }
                 startedChildren++;
+                if (options.serial || child.options.exclusive)
+                    break;
             }
 
             if (startedChildren) {
