@@ -43,11 +43,11 @@ export class TaskQueue extends TypedEventEmitterClass<TaskQueueEvents>(AsyncEven
         return this._paused;
     }
 
-    pause() {
+    pause(): void {
         this._paused = true;
     }
 
-    resume() {
+    resume(): void {
         this._paused = false;
         setImmediate(() => this._pulse());
     }
@@ -56,45 +56,55 @@ export class TaskQueue extends TypedEventEmitterClass<TaskQueueEvents>(AsyncEven
         this._queue = new DoublyLinked();
     }
 
-    cancelAll() {
+    async cancelAll(): Promise<void> {
+        if (!this.size)
+            return;
         this._running.forEach(task => task.cancel());
+        this._queue.forEach(task => task.cancel());
+        return this.waitFor();
     }
 
-    waitFor(): Promise<void> {
-        const promises: Promise<void>[] = [];
-        this._running.forEach(task => {
-            promises.push(task.toPromise());
+    async waitFor(): Promise<void> {
+        if (!this.size)
+            return Promise.resolve();
+        return new Promise(resolve => {
+            this.once('finish', resolve);
         });
-        return Promise.all(promises).then();
     }
 
-    enqueue(task: TaskLike, immediate?: boolean): Task {
+    enqueuePrepend(task: TaskLike): Task {
+        return this._enqueue(task, true);
+    }
+
+    enqueue(task: TaskLike): Task {
+        return this._enqueue(task, false);
+    }
+
+    protected _enqueue(task: TaskLike, prepend: boolean): Task {
         if (this.maxQueue && this.size >= this.maxQueue)
             throw new Error(`Queue limit (${this.maxQueue}) exceeded`);
-        this.emit('enqueue', task);
         const taskInstance = task instanceof Task ? task : new Task(task);
-        taskInstance.on('finish', () => this._pulse());
-        if (immediate)
+        this.emit('enqueue', taskInstance);
+        if (prepend)
             this._queue.unshift(taskInstance);
         else this._queue.push(taskInstance);
-        setImmediate(() => this._pulse());
+        this._pulse();
         return taskInstance;
     }
 
     protected _pulse() {
         if (this.paused)
             return;
-        while (true) {
-            if (this.concurrency && this._running.size >= this.concurrency)
-                return;
+        while (!this.concurrency || this._running.size < this.concurrency) {
             const task = this._queue.shift();
             if (!task)
                 return;
             this._running.add(task);
-            task.on('finish', () => {
+            task.prependOnceListener('finish', () => {
                 this._running.delete(task);
-                if (!this._running.size)
-                    this.emit('finish');
+                if (!(this._running.size || this._queue.length))
+                    return this.emit('finish');
+                this._pulse();
             })
             task.start();
         }

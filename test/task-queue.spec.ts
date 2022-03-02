@@ -29,11 +29,16 @@ describe('TaskQueue', function () {
         expect(() => queue.enqueue(noOp)).toThrow(/exceeded/);
     });
 
-    it('should execute sync function task', function (done) {
-        const queue = new TaskQueue();
-        queue.enqueue(() => {
-            setTimeout(done, 5);
-        });
+    it('should execute sync function task', async function () {
+        const queue = new TaskQueue({concurrency: 1});
+        queue.enqueue(async () => await delay(50));
+        queue.enqueue(async () => await delay(50));
+        await delay(5);
+        expect(queue.running).toEqual(1);
+        expect(queue.queued).toEqual(1);
+        await queue.waitFor();
+        expect(queue.running).toEqual(0);
+        expect(queue.queued).toEqual(0);
     });
 
     it('should execute async function task', function (done) {
@@ -96,23 +101,20 @@ describe('TaskQueue', function () {
         expect(p).toBeInstanceOf(Task);
     });
 
-    it('should add a task to first location in the queue', function (done) {
-        const queue = new TaskQueue();
+    it('should add a task to first location in the queue', async function () {
+        const queue = new TaskQueue({concurrency: 1});
         const q = [];
-        queue.on('finish', () => {
-            try {
-                expect(q).toEqual([2, 1]);
-            } catch (e) {
-                return done(e);
-            }
-            done();
-        });
-        queue.enqueue(() => {
+        queue.enqueue(async () => {
             q.push(1);
         });
-        queue.enqueue(() => {
+        queue.enqueue(async () => {
             q.push(2);
-        }, true);
+        });
+        queue.enqueuePrepend(async () => {
+            q.push(3);
+        });
+        await queue.waitFor();
+        expect(q).toEqual([1, 3, 2]);
     });
 
     it('should execute next on error', function (done) {
@@ -145,16 +147,32 @@ describe('TaskQueue', function () {
         });
     });
 
-    it('should clear', function (done) {
-        const queue = new TaskQueue();
+    it('should clear', async function () {
+        const queue = new TaskQueue({concurrency: 1});
         let err;
         queue.enqueue(async () => {
             await delay(10);
         });
-        queue.enqueue(() => {
+        queue.enqueue(async () => {
             err = new Error('Failed');
         });
         queue.clearQueue();
-        queue.enqueue(() => done(err));
+        await queue.waitFor();
+        expect(err).not.toBeDefined();
+    });
+
+    it('should cancel all tasks', async function () {
+        const queue = new TaskQueue({concurrency: 1});
+        queue.enqueue(async () => {
+            await delay(10);
+        });
+        const t2 = queue.enqueue(async () => 0);
+        const t3 = queue.enqueue(async () => 0);
+        queue.cancelAll();
+        await queue.waitFor();
+        expect(t2.status).toEqual('cancelled');
+        expect(t3.status).toEqual('cancelled');
+        expect(queue.running).toEqual(0);
+        expect(queue.queued).toEqual(0);
     });
 });

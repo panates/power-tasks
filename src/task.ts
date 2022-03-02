@@ -126,27 +126,17 @@ export class Task<T = any> extends TypedEventEmitterClass<TaskEvents>(AsyncEvent
         ctx.concurrency = this.options.concurrency || os.cpus().length;
         ctx.allTasks.add(this);
         ctx.setMaxListeners(Number.MAX_SAFE_INTEGER);
-        this._fetchChildren()
-            .then(() => {
-                this._start();
-            })
-            .catch(error => {
-                this._update({
-                    status: 'failed',
-                    error,
-                    message: error instanceof Error ? error.message : '' + error
-                });
-            });
+        this._fetchChildren().then(() => this._start());
         return this;
     }
 
     cancel(): this {
+        if (this.isFinished || this.status === 'cancelling')
+            return this;
         if (!this.isStarted) {
             this._update({status: 'cancelled', message: 'Cancelled'});
             return this;
         }
-        if (this.isFinished || this.status === 'cancelling')
-            return this;
         const timeout = this.options.cancelTimeout || 5000;
         const cancelFn = this.options.cancel;
         if (cancelFn || this._children?.length)
@@ -187,6 +177,7 @@ export class Task<T = any> extends TypedEventEmitterClass<TaskEvents>(AsyncEvent
     }
 
     protected _start(): void {
+        /* istanbul ignore next */
         if (this.isStarted)
             return;
         if (this.options.dependencies) {
@@ -356,7 +347,8 @@ export class Task<T = any> extends TypedEventEmitterClass<TaskEvents>(AsyncEvent
             if (this.isFinished && !oldFinished) {
                 this.emitAsync('finish', this).catch(noOp);
             }
-            this._context.emit('pulse');
+            if (this._context)
+                this._context.emit('pulse');
         }
     }
 

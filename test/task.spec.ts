@@ -25,6 +25,7 @@ describe('Task', function () {
         ]);
         expect(r).toEqual(1);
         expect(i).toEqual(1);
+        expect(task.message).toEqual('Task completed');
     });
 
     it('should execute async function', async function () {
@@ -68,6 +69,29 @@ describe('Task', function () {
             "task:cancelled"
         ]);
         expect(i).toEqual(1);
+    });
+
+    it('should "cancel" do nothing after finish', async function () {
+        const task = new Task(() => 0);
+        await task.toPromise();
+        expect(task.status).toEqual('fulfilled');
+        task.cancel();
+        await task.toPromise();
+        expect(task.status).toEqual('fulfilled');
+    });
+
+    it('should force cancel after timeout', async function () {
+        const task = new Task(async () => {
+            await delay(250);
+        }, {
+            cancelTimeout: 5
+        });
+        await task.start();
+        await delay(5);
+        const t = Date.now();
+        task.cancel();
+        await task.toPromise();
+        expect(Date.now() - t).toBeLessThanOrEqual(50);
     });
 
     it('should execute child tasks', async function () {
@@ -412,5 +436,6 @@ describe('Task', function () {
         expect(t2.status).toEqual('cancelled');
         expect(t3.status).toEqual('cancelled');
     });
+
 
 });
