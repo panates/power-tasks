@@ -436,7 +436,7 @@ describe('Task', function () {
         expect(t3.status).toEqual('cancelled');
     });
 
-    it('should wait exclusive tasks', async function () {
+    it('should run exclusive tasks one at a time', async function () {
         const r = [];
         const newFn = (i: number) => (
             async () => {
@@ -464,8 +464,8 @@ describe('Task', function () {
         expect(messages).toStrictEqual([
             "main:running",
             "t1:running",
-            "t2:running",
             "t1:fulfilled",
+            "t2:running",
             "t2:fulfilled",
             "t3:running",
             "t4:running",

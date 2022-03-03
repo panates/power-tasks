@@ -243,6 +243,10 @@ export class Task<T = any> extends TypedEventEmitterClass<TaskEvents>(AsyncEvent
         const children = this._children;
         if (children) {
             for (const c of children) {
+                if (c.options.exclusive && !c.isStarted && startedChildren) {
+                    this._context.once('pulse', () => this._pulse());
+                    return;
+                }
                 if (c.isStarted) {
                     if (options.serial || c.options.exclusive) {
                         this._context.once('pulse', () => this._pulse());
@@ -280,7 +284,9 @@ export class Task<T = any> extends TypedEventEmitterClass<TaskEvents>(AsyncEvent
             for (const child of children) {
                 if (child.isFinished || child.isStarted)
                     continue;
-                if (this._context.executingTasks >= this._context.concurrency) {
+                if ((this._context.executingTasks >= this._context.concurrency) ||
+                    (child.options.exclusive && startedChildren)
+                ) {
                     this._context.once('pulse', () => this._pulse());
                     return;
                 }
