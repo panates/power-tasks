@@ -179,20 +179,26 @@ describe('Task', function () {
     it('should cancel remaining children, if any child fails (bail=true, serial=true)', async function () {
         let i = 0;
         let c = 0;
-        const task = new Task([
-            new Task(async () => {
-                await delay(10);
-                throw new Error('test');
-            }),
-            new Task(async () => {
-                await delay(50);
-                i++;
-            }, {cancel: () => c++}),
-            new Task(async () => {
-                await delay(60);
-                i++;
-            }, {cancel: () => c++}),
-        ], {bail: true, serial: true});
+        const t1 = new Task(async () => {
+            await delay(10);
+            throw new Error('test');
+        }, {name: 't1'});
+        const t2 = new Task(async () => {
+            await delay(60);
+            i++;
+        }, {name: 't2', cancel: () => c++});
+        const t3 = new Task(async () => {
+            await delay(40);
+            i++;
+        }, {name: 't3', cancel: () => c++});
+        const task = new Task([t1, t2, t3], {name: 'main', bail: true, serial: true});
+
+        const messages: string[] = [];
+        const onUpdate = logUpdates(messages);
+        task.on('update', onUpdate);
+        t1.on('update', onUpdate);
+        t2.on('update', onUpdate);
+        t3.on('update', onUpdate);
         await task.toPromise().catch(noOp);
         expect(task.status).toEqual('failed');
         expect(i).toEqual(0);
@@ -200,25 +206,38 @@ describe('Task', function () {
         expect(task.children[0].status).toEqual('failed');
         expect(task.children[1].status).toEqual('cancelled');
         expect(task.children[2].status).toEqual('cancelled');
+        expect(messages).toStrictEqual([
+            "main:running",
+            "t1:running",
+            "t1:failed",
+            "t3:cancelled",
+            "t2:cancelled",
+            "main:failed"
+        ]);
     });
 
     it('should cancel running children, if any child fails (bail=true, serial=false)', async function () {
         let i = 0;
         let c = 0;
-        const task = new Task([
-            new Task(async () => {
-                await delay(10);
-                throw new Error('test');
-            }),
-            new Task(async () => {
-                await delay(50);
-                i++;
-            }, {cancel: () => c++}),
-            new Task(async () => {
-                await delay(60);
-                i++;
-            }, {cancel: () => c++}),
-        ], {bail: true, serial: false});
+        const t1 = new Task(async () => {
+            await delay(10);
+            throw new Error('test');
+        }, {name: 't1'});
+        const t2 = new Task(async () => {
+            await delay(60);
+            i++;
+        }, {name: 't2', cancel: () => c++});
+        const t3 = new Task(async () => {
+            await delay(40);
+            i++;
+        }, {name: 't3', cancel: () => c++});
+        const task = new Task([t1, t2, t3], {name: 'main', bail: true, serial: false});
+        const messages: string[] = [];
+        const onUpdate = logUpdates(messages);
+        task.on('update', onUpdate);
+        t1.on('update', onUpdate);
+        t2.on('update', onUpdate);
+        t3.on('update', onUpdate);
         await task.toPromise().catch(noOp);
         expect(task.status).toEqual('failed');
         expect(i).toEqual(0);
@@ -226,25 +245,42 @@ describe('Task', function () {
         expect(task.children[0].status).toEqual('failed');
         expect(task.children[1].status).toEqual('cancelled');
         expect(task.children[2].status).toEqual('cancelled');
+        expect(messages).toStrictEqual([
+            "main:running",
+            "t1:running",
+            "t2:running",
+            "t3:running",
+            "t1:failed",
+            "t3:cancelling",
+            "t2:cancelling",
+            "t3:cancelled",
+            "t2:cancelled",
+            "main:failed"
+        ]);
     });
 
     it('should fail but run all children, if any child fails (bail=false, serial=false)', async function () {
         let i = 0;
         let c = 0;
-        const task = new Task([
-            new Task(async () => {
-                await delay(10);
-                throw new Error('test');
-            }),
-            new Task(async () => {
-                await delay(50);
-                i++;
-            }, {cancel: () => c++}),
-            new Task(async () => {
-                await delay(60);
-                i++;
-            }, {cancel: () => c++}),
-        ], {bail: false, serial: false});
+        const t1 = new Task(async () => {
+            await delay(10);
+            throw new Error('test');
+        }, {name: 't1'});
+        const t2 = new Task(async () => {
+            await delay(60);
+            i++;
+        }, {name: 't2', cancel: () => c++});
+        const t3 = new Task(async () => {
+            await delay(40);
+            i++;
+        }, {name: 't3', cancel: () => c++});
+        const task = new Task([t1, t2, t3], {name: 'main', bail: false, serial: false});
+        const messages: string[] = [];
+        const onUpdate = logUpdates(messages);
+        task.on('update', onUpdate);
+        t1.on('update', onUpdate);
+        t2.on('update', onUpdate);
+        t3.on('update', onUpdate);
         await task.toPromise().catch(noOp);
         expect(task.status).toEqual('failed');
         expect(i).toEqual(2);
@@ -252,25 +288,40 @@ describe('Task', function () {
         expect(task.children[0].status).toEqual('failed');
         expect(task.children[1].status).toEqual('fulfilled');
         expect(task.children[2].status).toEqual('fulfilled');
+        expect(messages).toStrictEqual([
+            "main:running",
+            "t1:running",
+            "t2:running",
+            "t3:running",
+            "t1:failed",
+            "t3:fulfilled",
+            "t2:fulfilled",
+            "main:failed"
+        ]);
     });
 
     it('should fail but run all children, if any child fails (bail=false, serial=true)', async function () {
         let i = 0;
         let c = 0;
-        const task = new Task([
-            new Task(async () => {
-                await delay(10);
-                throw new Error('test');
-            }),
-            new Task(async () => {
-                await delay(50);
-                i++;
-            }, {cancel: () => c++}),
-            new Task(async () => {
-                await delay(60);
-                i++;
-            }, {cancel: () => c++}),
-        ], {bail: false, serial: true});
+        const t1 = new Task(async () => {
+            await delay(10);
+            throw new Error('test');
+        }, {name: 't1'});
+        const t2 = new Task(async () => {
+            await delay(60);
+            i++;
+        }, {name: 't2', cancel: () => c++});
+        const t3 = new Task(async () => {
+            await delay(40);
+            i++;
+        }, {name: 't3', cancel: () => c++});
+        const task = new Task([t1, t2, t3], {name: 'main', bail: false, serial: true});
+        const messages: string[] = [];
+        const onUpdate = logUpdates(messages);
+        task.on('update', onUpdate);
+        t1.on('update', onUpdate);
+        t2.on('update', onUpdate);
+        t3.on('update', onUpdate);
         await task.toPromise().catch(noOp);
         expect(task.status).toEqual('failed');
         expect(i).toEqual(2);
@@ -278,6 +329,16 @@ describe('Task', function () {
         expect(task.children[0].status).toEqual('failed');
         expect(task.children[1].status).toEqual('fulfilled');
         expect(task.children[2].status).toEqual('fulfilled');
+        expect(messages).toStrictEqual([
+            "main:running",
+            "t1:running",
+            "t1:failed",
+            "t2:running",
+            "t2:fulfilled",
+            "t3:running",
+            "t3:fulfilled",
+            "main:failed"
+        ]);
     });
 
     it('should execute child tasks concurrent', async function () {
