@@ -36,7 +36,7 @@ describe('TaskQueue', function () {
         await delay(5);
         expect(queue.running).toEqual(1);
         expect(queue.queued).toEqual(1);
-        await queue.waitFor();
+        await queue.wait();
         expect(queue.running).toEqual(0);
         expect(queue.queued).toEqual(0);
     });
@@ -113,7 +113,7 @@ describe('TaskQueue', function () {
         queue.enqueuePrepend(async () => {
             q.push(3);
         });
-        await queue.waitFor();
+        await queue.wait();
         expect(q).toEqual([1, 3, 2]);
     });
 
@@ -157,21 +157,21 @@ describe('TaskQueue', function () {
             err = new Error('Failed');
         });
         queue.clearQueue();
-        await queue.waitFor();
+        await queue.wait();
         expect(err).not.toBeDefined();
     });
 
-    it('should cancel all tasks', async function () {
+    it('should abort all tasks', async function () {
         const queue = new TaskQueue({concurrency: 1});
         queue.enqueue(async () => {
             await delay(10);
         });
         const t2 = queue.enqueue(async () => 0);
         const t3 = queue.enqueue(async () => 0);
-        queue.cancelAll();
-        await queue.waitFor();
-        expect(t2.status).toEqual('cancelled');
-        expect(t3.status).toEqual('cancelled');
+        queue.abortAll();
+        await queue.wait();
+        expect(t2.status).toEqual('aborted');
+        expect(t3.status).toEqual('aborted');
         expect(queue.running).toEqual(0);
         expect(queue.queued).toEqual(0);
     });

@@ -1,369 +1,174 @@
 import './env';
-import {Task} from '../src';
+import {AbortError, Task} from '../src';
 import {delay} from '../src/utils';
 
 const noOp = () => void (0);
 const logUpdates = (messages: string[]) => {
-    return (v, t) => {
-        messages.push((t.name || 'task') + ':' + t.status +
-            (t.status === 'waiting' ? ':' + t.waitingFor.name : ''));
+    return (task: Task) => {
+        let s = (task.name || task.id) + ':' + task.status;
+        if (task.waitingFor)
+            s += ':' + task.waitingFor.map(t => (t.name || t.id)).join();
+        messages.push(s);
     };
 }
 
 describe('Task', function () {
 
-    it('should execute simple function', async function () {
+    it('should execute sync Task', async function () {
         let i = 0;
-        const task = new Task(() => ++i);
+        const task = new Task(() => ++i, {id: 't1'});
         const messages: string[] = [];
         const onUpdate = logUpdates(messages);
         task.on('update', onUpdate);
         const r = await task.toPromise();
         expect(messages).toStrictEqual([
-            "task:running",
-            "task:fulfilled"
+            "t1:running",
+            "t1:fulfilled"
         ]);
         expect(r).toEqual(1);
         expect(i).toEqual(1);
         expect(task.message).toEqual('Task completed');
     });
 
-    it('should execute async function', async function () {
+    it('should execute async Task', async function () {
         let i = 0;
         const task = new Task(async () => {
             await delay(50);
             return ++i;
-        });
+        }, {id: 't1'});
         const messages: string[] = [];
         const onUpdate = logUpdates(messages);
         task.on('update', onUpdate);
         const r = await task.toPromise();
         expect(messages).toStrictEqual([
-            "task:running",
-            "task:fulfilled"
+            "t1:running",
+            "t1:fulfilled"
         ]);
         expect(r).toEqual(1);
         expect(i).toEqual(1);
     });
 
-    it('should cancel', async function () {
-        let i = 0;
-        const task = new Task(async () => {
+    it('should abort', async function () {
+        const task = new Task(async ({signal}) => {
             await delay(20);
-            i++;
-        }, {
-            cancel: () => {
-                i++;
-            }
-        });
+            if (signal.aborted)
+                throw new AbortError()
+        }, {id: 't1'});
         const messages: string[] = [];
         const onUpdate = logUpdates(messages);
         task.on('update', onUpdate);
         await task.start();
         await delay(10);
-        task.cancel();
+        task.abort();
         await task.toPromise();
         expect(messages).toStrictEqual([
-            "task:running",
-            "task:cancelling",
-            "task:cancelled"
+            "t1:running",
+            "t1:aborting",
+            "t1:aborted"
         ]);
-        expect(i).toEqual(1);
     });
 
-    it('should "cancel" do nothing after finish', async function () {
+    it('should "abort" do nothing after finish', async function () {
         const task = new Task(() => 0);
         await task.toPromise();
         expect(task.status).toEqual('fulfilled');
-        task.cancel();
+        task.abort();
         await task.toPromise();
         expect(task.status).toEqual('fulfilled');
     });
 
-    it('should force cancel after timeout', async function () {
+    it('should force abort after timeout', async function () {
         const task = new Task(async () => {
             await delay(250);
         }, {
-            cancelTimeout: 5
+            abortTimeout: 5
         });
         await task.start();
         await delay(5);
         const t = Date.now();
-        task.cancel();
+        task.abort();
         await task.toPromise();
         expect(Date.now() - t).toBeLessThanOrEqual(50);
     });
 
     it('should execute child tasks', async function () {
-        const task = new Task((task1 => {
-            return task1.children.reduce((a, t) => a + t.result, 0);
+        const messages: string[] = [];
+        const onUpdateRecursive = logUpdates(messages);
+        const task = new Task((({task}) => {
+            return task.children.reduce((a, t) => a + t.result, 0);
         }), {
+            id: 't1',
             children: [
-                new Task(() => {
-                    return 1;
-                }),
+                new Task(() => 1),
                 new Task(async () => 2),
                 () => 3,
                 async () => {
                     await delay(50);
                     return 4;
                 }
-            ]
+            ],
+            onUpdateRecursive,
+            concurrency: 10
         });
         const r = await task.toPromise();
         expect(task.status).toEqual('fulfilled');
         expect(r).toEqual(10);
         expect(task.children).toBeDefined();
+        expect(messages).toStrictEqual([
+            "t1:running",
+            "t1-1:running",
+            "t1-2:running",
+            "t1-3:running",
+            "t1-4:running",
+            "t1-1:fulfilled",
+            "t1-3:fulfilled",
+            "t1-2:fulfilled",
+            "t1-4:fulfilled",
+            "t1:fulfilled"
+        ]);
     });
 
-    it('should add child tasks on the fly', async function () {
-        let i = 0;
-        const task = new Task((task1) => task1.children.length, {
-            children: async () => {
-                return [
-                    new Task(() => {
-                        i++;
-                    }, {name: 't1'}),
-                    new Task(async () => {
-                        i++;
-                    }, {name: 't2'})
-                ]
-            }
-        });
-        await task.toPromise();
-        expect(i).toEqual(2);
-        expect(task.status).toEqual('fulfilled');
-        expect(task.children).toBeDefined();
-        expect(task.children.length).toEqual(2);
-        expect(task.children[0].status).toEqual('fulfilled');
-        expect(task.children[1].status).toEqual('fulfilled');
-    });
-
-    it('should cancel child tasks', async function () {
-        let cancelled = [];
-        let fulfilled = [];
-        const children = [];
-        for (let i = 0; i < 5; i++) {
-            const x = i + 1;
-            children.push(new Task(
-                async (task) => {
+    it('should execute child tasks serial', async function () {
+        const messages: string[] = [];
+        const onUpdateRecursive = logUpdates(messages);
+        const task = new Task((({task}) => {
+            return task.children.reduce((a, t) => a + t.result, 0);
+        }), {
+            id: 't1',
+            children: [
+                new Task(() => 1),
+                new Task(async () => 2),
+                () => 3,
+                async () => {
                     await delay(50);
-                    if (task.status === 'running')
-                        fulfilled.push(x);
-                }, {
-                    name: 't' + x,
-                    cancel: async () => {
-                        await delay(5);
-                        cancelled.push(x);
-                    }
+                    return 4;
                 }
-            ))
-        }
-        const task = new Task(() => 0, {
-            children,
-            concurrency: 10,
-            name: 'main'
+            ],
+            onUpdateRecursive,
+            serial: true
         });
-        task.start();
-        await delay(10);
-        task.cancel();
-        await task.toPromise();
-        expect(task.status).toEqual('cancelled');
-        for (const t of task.children) {
-            expect(t.status).toEqual('cancelled');
-        }
-        expect(fulfilled.length).toEqual(0);
-        expect(cancelled).toEqual([5, 4, 3, 2, 1]);
-    });
-
-    it('should cancel remaining children, if any child fails (bail=true, serial=true)', async function () {
-        let i = 0;
-        let c = 0;
-        const t1 = new Task(async () => {
-            await delay(10);
-            throw new Error('test');
-        }, {name: 't1'});
-        const t2 = new Task(async () => {
-            await delay(60);
-            i++;
-        }, {name: 't2', cancel: () => c++});
-        const t3 = new Task(async () => {
-            await delay(40);
-            i++;
-        }, {name: 't3', cancel: () => c++});
-        const task = new Task([t1, t2, t3], {name: 'main', bail: true, serial: true});
-
-        const messages: string[] = [];
-        const onUpdate = logUpdates(messages);
-        task.on('update', onUpdate);
-        t1.on('update', onUpdate);
-        t2.on('update', onUpdate);
-        t3.on('update', onUpdate);
-        await task.toPromise().catch(noOp);
-        expect(task.status).toEqual('failed');
-        expect(i).toEqual(0);
-        expect(c).toEqual(0);
-        expect(task.children[0].status).toEqual('failed');
-        expect(task.children[1].status).toEqual('cancelled');
-        expect(task.children[2].status).toEqual('cancelled');
-        expect(messages).toStrictEqual([
-            "main:running",
-            "t1:running",
-            "t1:failed",
-            "t3:cancelled",
-            "t2:cancelled",
-            "main:failed"
-        ]);
-    });
-
-    it('should cancel running children, if any child fails (bail=true, serial=false)', async function () {
-        let i = 0;
-        let c = 0;
-        const t1 = new Task(async () => {
-            await delay(10);
-            throw new Error('test');
-        }, {name: 't1'});
-        const t2 = new Task(async () => {
-            await delay(60);
-            i++;
-        }, {name: 't2', cancel: () => c++});
-        const t3 = new Task(async () => {
-            await delay(40);
-            i++;
-        }, {name: 't3', cancel: () => c++});
-        const task = new Task([t1, t2, t3], {name: 'main', bail: true, serial: false});
-        const messages: string[] = [];
-        const onUpdate = logUpdates(messages);
-        task.on('update', onUpdate);
-        t1.on('update', onUpdate);
-        t2.on('update', onUpdate);
-        t3.on('update', onUpdate);
-        await task.toPromise().catch(noOp);
-        expect(task.status).toEqual('failed');
-        expect(i).toEqual(0);
-        expect(c).toEqual(2);
-        expect(task.children[0].status).toEqual('failed');
-        expect(task.children[1].status).toEqual('cancelled');
-        expect(task.children[2].status).toEqual('cancelled');
-        expect(messages).toStrictEqual([
-            "main:running",
-            "t1:running",
-            "t2:running",
-            "t3:running",
-            "t1:failed",
-            "t3:cancelling",
-            "t2:cancelling",
-            "t3:cancelled",
-            "t2:cancelled",
-            "main:failed"
-        ]);
-    });
-
-    it('should fail but run all children, if any child fails (bail=false, serial=false)', async function () {
-        let i = 0;
-        let c = 0;
-        const t1 = new Task(async () => {
-            await delay(10);
-            throw new Error('test');
-        }, {name: 't1'});
-        const t2 = new Task(async () => {
-            await delay(60);
-            i++;
-        }, {name: 't2', cancel: () => c++});
-        const t3 = new Task(async () => {
-            await delay(40);
-            i++;
-        }, {name: 't3', cancel: () => c++});
-        const task = new Task([t1, t2, t3], {name: 'main', bail: false, serial: false});
-        const messages: string[] = [];
-        const onUpdate = logUpdates(messages);
-        task.on('update', onUpdate);
-        t1.on('update', onUpdate);
-        t2.on('update', onUpdate);
-        t3.on('update', onUpdate);
-        await task.toPromise().catch(noOp);
-        expect(task.status).toEqual('failed');
-        expect(i).toEqual(2);
-        expect(c).toEqual(0);
-        expect(task.children[0].status).toEqual('failed');
-        expect(task.children[1].status).toEqual('fulfilled');
-        expect(task.children[2].status).toEqual('fulfilled');
-        expect(messages).toStrictEqual([
-            "main:running",
-            "t1:running",
-            "t2:running",
-            "t3:running",
-            "t1:failed",
-            "t3:fulfilled",
-            "t2:fulfilled",
-            "main:failed"
-        ]);
-    });
-
-    it('should fail but run all children, if any child fails (bail=false, serial=true)', async function () {
-        let i = 0;
-        let c = 0;
-        const t1 = new Task(async () => {
-            await delay(10);
-            throw new Error('test');
-        }, {name: 't1'});
-        const t2 = new Task(async () => {
-            await delay(60);
-            i++;
-        }, {name: 't2', cancel: () => c++});
-        const t3 = new Task(async () => {
-            await delay(40);
-            i++;
-        }, {name: 't3', cancel: () => c++});
-        const task = new Task([t1, t2, t3], {name: 'main', bail: false, serial: true});
-        const messages: string[] = [];
-        const onUpdate = logUpdates(messages);
-        task.on('update', onUpdate);
-        t1.on('update', onUpdate);
-        t2.on('update', onUpdate);
-        t3.on('update', onUpdate);
-        await task.toPromise().catch(noOp);
-        expect(task.status).toEqual('failed');
-        expect(i).toEqual(2);
-        expect(c).toEqual(0);
-        expect(task.children[0].status).toEqual('failed');
-        expect(task.children[1].status).toEqual('fulfilled');
-        expect(task.children[2].status).toEqual('fulfilled');
-        expect(messages).toStrictEqual([
-            "main:running",
-            "t1:running",
-            "t1:failed",
-            "t2:running",
-            "t2:fulfilled",
-            "t3:running",
-            "t3:fulfilled",
-            "main:failed"
-        ]);
-    });
-
-    it('should execute child tasks concurrent', async function () {
-        const arr = [];
-        const task = new Task([
-            new Task(async () => {
-                await delay(10);
-                arr.push(1);
-            }),
-            new Task(async () => {
-                await delay(5);
-                arr.push(2);
-            })
-        ], {concurrency: 10});
-        await task.toPromise();
-        expect(arr.length).toEqual(2);
+        const r = await task.toPromise();
         expect(task.status).toEqual('fulfilled');
+        expect(r).toEqual(10);
         expect(task.children).toBeDefined();
-        expect(task.children.length).toEqual(2);
-        expect(arr[0]).toEqual(2);
-        expect(arr[1]).toEqual(1);
+        expect(messages).toStrictEqual([
+            "t1:running",
+            "t1-1:running",
+            "t1-1:fulfilled",
+            "t1-2:running",
+            "t1-2:fulfilled",
+            "t1-3:running",
+            "t1-3:fulfilled",
+            "t1-4:running",
+            "t1-4:fulfilled",
+            "t1:fulfilled"
+        ]);
     });
 
     it('should limit concurrent tasks', async function () {
         const a = [];
+        const messages: string[] = [];
+        const onUpdateRecursive = logUpdates(messages);
         let running = 0;
         for (let i = 0; i < 8; i++) {
             a.push(new Task(async () => {
@@ -373,8 +178,300 @@ describe('Task', function () {
                 await delay(50);
             }).on('finish', () => running--));
         }
-        const task = new Task(a, {concurrency: 2});
+        const task = new Task(a, {id: 't1', concurrency: 2, onUpdateRecursive});
         await task.toPromise();
+        expect(messages).toStrictEqual([
+            "t1:running",
+            "t1-1:running",
+            "t1-2:running",
+            "t1-1:fulfilled",
+            "t1-2:fulfilled",
+            "t1-3:running",
+            "t1-4:running",
+            "t1-3:fulfilled",
+            "t1-4:fulfilled",
+            "t1-5:running",
+            "t1-6:running",
+            "t1-5:fulfilled",
+            "t1-6:fulfilled",
+            "t1-7:running",
+            "t1-8:running",
+            "t1-7:fulfilled",
+            "t1-8:fulfilled",
+            "t1:fulfilled"
+        ]);
+    });
+
+    it('should add child tasks on the fly', async function () {
+        let i = 0;
+        const messages: string[] = [];
+        const onUpdateRecursive = logUpdates(messages);
+        const task = new Task(({task: task1}) => task1.children.length, {
+            id: 't1',
+            children: async () => {
+                return [
+                    new Task(() => {
+                        i++;
+                    }),
+                    new Task(async () => {
+                        i++;
+                    }, {
+                        children: async () => [
+                            () => i++
+                        ]
+                    })
+                ]
+            },
+            onUpdateRecursive,
+            concurrency: 10
+        });
+        await task.toPromise();
+        expect(i).toEqual(3);
+        expect(task.status).toEqual('fulfilled');
+        expect(task.children).toBeDefined();
+        expect(task.children.length).toEqual(2);
+        expect(task.children[1].children).toBeDefined();
+        expect(task.children[1].children.length).toEqual(1);
+        expect(task.children[0].status).toEqual('fulfilled');
+        expect(task.children[1].status).toEqual('fulfilled');
+        expect(messages).toStrictEqual([
+            "t1:running",
+            "t1-1:running",
+            "t1-2:running",
+            "t1-2-1:running",
+            "t1-1:fulfilled",
+            "t1-2-1:fulfilled",
+            "t1-2:fulfilled",
+            "t1:fulfilled"
+        ]);
+    });
+
+    it('should abort child tasks', async function () {
+        const aborted = [];
+        const children = [];
+        const messages: string[] = [];
+        const onUpdateRecursive = logUpdates(messages);
+        for (let i = 0; i < 5; i++) {
+            const x = i + 1;
+            const c = new Task(
+                async ({signal}) => {
+                    return new Promise((resolve, reject) => {
+                        const timer = setTimeout(resolve, 1000);
+                        signal.addEventListener('abort', () => {
+                            clearTimeout(timer);
+                            aborted.push(x);
+                            reject(new AbortError());
+                        });
+                    });
+                });
+            children.push(c);
+        }
+        children[children.length - 1].once('status-change', (t) => {
+            if (t.status === 'running')
+                setTimeout(() => task.abort(), 5);
+        });
+
+        const task = new Task(() => 0, {
+            id: 't1',
+            children,
+            onUpdateRecursive,
+            concurrency: 10
+        });
+        task.start();
+        await task.toPromise().catch(noOp);
+        expect(messages).toStrictEqual([
+            "t1:running",
+            "t1-1:running",
+            "t1-2:running",
+            "t1-3:running",
+            "t1-4:running",
+            "t1-5:running",
+            "t1:aborting",
+            "t1-5:aborting",
+            "t1-4:aborting",
+            "t1-3:aborting",
+            "t1-2:aborting",
+            "t1-1:aborting",
+            "t1-5:aborted",
+            "t1-4:aborted",
+            "t1-3:aborted",
+            "t1-2:aborted",
+            "t1-1:aborted",
+            "t1:aborted"
+        ]);
+        expect(task.status).toEqual('aborted');
+        expect(aborted).toEqual([5, 4, 3, 2, 1]);
+    });
+
+    it('should abort remaining children then fail, if any child fails (bail=true, serial=true)', async function () {
+        let i = 0;
+        let c = 0;
+        const messages: string[] = [];
+        const onUpdateRecursive = logUpdates(messages);
+        const task = new Task([
+            new Task(async () => {
+                await delay(10);
+                throw new Error('test');
+            }),
+            new Task(async ({signal}) => {
+                await delay(60);
+                if (signal.aborted) c++; else i++;
+            }),
+            new Task(async ({signal}) => {
+                await delay(40);
+                if (signal.aborted) c++; else i++;
+            })
+        ], {
+            id: 't1',
+            bail: true,
+            serial: true,
+            concurrency: 10,
+            onUpdateRecursive
+        });
+
+        await task.toPromise().catch(noOp);
+        expect(task.status).toEqual('failed');
+        expect(messages).toStrictEqual([
+            "t1:running",
+            "t1-1:running",
+            "t1-1:failed",
+            "t1-3:aborted",
+            "t1-2:aborted",
+            "t1:failed"
+        ]);
+        expect(i).toEqual(0);
+        expect(c).toEqual(0);
+    });
+
+    it('should abort running children then fail, if any child fails (bail=true, serial=false)', async function () {
+        const messages: string[] = [];
+        const onUpdateRecursive = logUpdates(messages);
+        const task = new Task([
+            new Task(async () => {
+                await delay(50);
+                throw new Error('test');
+            }),
+            new Task(async ({signal}) => {
+                await delay(200);
+                if (signal.aborted)
+                    throw new AbortError();
+            }),
+            new Task(async ({signal}) => {
+                await delay(150);
+                if (signal.aborted)
+                    throw new AbortError();
+            })
+        ], {
+            id: 't1',
+            bail: true,
+            serial: false,
+            concurrency: 10,
+            onUpdateRecursive
+        });
+        await task.toPromise().catch(noOp);
+        expect(task.status).toEqual('failed');
+        expect(task.children[0].status).toEqual('failed');
+        expect(task.children[1].status).toEqual('aborted');
+        expect(task.children[2].status).toEqual('aborted');
+        expect(messages).toStrictEqual([
+            "t1:running",
+            "t1-1:running",
+            "t1-2:running",
+            "t1-3:running",
+            "t1-1:failed",
+            "t1:aborting",
+            "t1-3:aborting",
+            "t1-2:aborting",
+            "t1-3:aborted",
+            "t1-2:aborted",
+            "t1:failed"
+        ]);
+    });
+
+    it('should run all children then fail, if any child fails (bail=false, serial=false)', async function () {
+        const messages: string[] = [];
+        const onUpdateRecursive = logUpdates(messages);
+        const task = new Task([
+            new Task(async () => {
+                await delay(50);
+                throw new Error('test');
+            }),
+            new Task(async ({signal}) => {
+                await delay(200);
+                if (signal.aborted)
+                    throw new AbortError();
+            }),
+            new Task(async ({signal}) => {
+                await delay(150);
+                if (signal.aborted)
+                    throw new AbortError();
+            })
+        ], {
+            id: 't1',
+            bail: false,
+            serial: false,
+            concurrency: 10,
+            onUpdateRecursive
+        });
+
+        await task.toPromise().catch(noOp);
+        expect(task.status).toEqual('failed');
+        expect(task.children[0].status).toEqual('failed');
+        expect(task.children[1].status).toEqual('fulfilled');
+        expect(task.children[2].status).toEqual('fulfilled');
+        expect(messages).toStrictEqual([
+            "t1:running",
+            "t1-1:running",
+            "t1-2:running",
+            "t1-3:running",
+            "t1-1:failed",
+            "t1-3:fulfilled",
+            "t1-2:fulfilled",
+            "t1:failed"
+        ]);
+    });
+
+    it('should run all children then fail, if any child fails (bail=false, serial=true)', async function () {
+        const messages: string[] = [];
+        const onUpdateRecursive = logUpdates(messages);
+        const task = new Task([
+            new Task(async () => {
+                await delay(50);
+                throw new Error('test');
+            }),
+            new Task(async ({signal}) => {
+                await delay(200);
+                if (signal.aborted)
+                    throw new AbortError();
+            }),
+            new Task(async ({signal}) => {
+                await delay(150);
+                if (signal.aborted)
+                    throw new AbortError();
+            })
+        ], {
+            id: 't1',
+            bail: false,
+            serial: true,
+            concurrency: 10,
+            onUpdateRecursive
+        });
+
+        await task.toPromise().catch(noOp);
+        expect(task.status).toEqual('failed');
+        expect(task.children[0].status).toEqual('failed');
+        expect(task.children[1].status).toEqual('fulfilled');
+        expect(task.children[2].status).toEqual('fulfilled');
+        expect(messages).toStrictEqual([
+            "t1:running",
+            "t1-1:running",
+            "t1-1:failed",
+            "t1-2:running",
+            "t1-2:fulfilled",
+            "t1-3:running",
+            "t1-3:fulfilled",
+            "t1:failed"
+        ]);
     });
 
     it('should wait for dependent task to complete before execute', async function () {
@@ -384,44 +481,36 @@ describe('Task', function () {
                 await delay(50 + (i * 5));
                 r.push(i);
             });
-
-        const t5 = new Task(newFn(5), {name: 't5'});
-        const t1 = new Task(newFn(1), {name: 't1', dependencies: [t5]});
-        const t4 = new Task(newFn(4), {name: 't4', dependencies: ['t1']});
-        const t2 = new Task(newFn(2), {name: 't2', dependencies: [t4]});
-        const t3 = new Task(newFn(3), {name: 't3', dependencies: ['t4']});
-        const task = new Task([t1, t2, t3, t4, t5], {name: 'main'});
-
         const messages: string[] = [];
-        const onUpdate = logUpdates(messages);
-        task.on('update', onUpdate);
-        t1.on('update', onUpdate);
-        t2.on('update', onUpdate);
-        t3.on('update', onUpdate);
-        t4.on('update', onUpdate);
-        t5.on('update', onUpdate);
+        const onUpdateRecursive = logUpdates(messages);
+        const c5 = new Task(newFn(5), {name: 'c5'});
+        const c1 = new Task(newFn(1), {name: 'c1', dependencies: [c5]});
+        const c4 = new Task(newFn(4), {name: 'c4', dependencies: ['c1']});
+        const c2 = new Task(newFn(2), {name: 'c2', dependencies: [c4]});
+        const c3 = new Task(newFn(3), {name: 'c3', dependencies: ['c4']});
+        const task = new Task([c1, c2, c3, c4, c5], {id: 't1', onUpdateRecursive, concurrency: 10});
 
         await task.toPromise();
         expect(task.status).toEqual('fulfilled');
-        expect(r).toEqual([5, 1, 4, 2, 3]);
         expect(messages).toStrictEqual([
-            "main:running",
-            "t1:waiting:t5",
-            "t2:waiting:t4",
-            "t3:waiting:t4",
-            "t4:waiting:t1",
-            "t5:running",
-            "t5:fulfilled",
             "t1:running",
-            "t1:fulfilled",
-            "t4:running",
-            "t4:fulfilled",
-            "t2:running",
-            "t3:running",
-            "t2:fulfilled",
-            "t3:fulfilled",
-            "main:fulfilled"
+            "c1:waiting:c5",
+            "c2:waiting:c4",
+            "c3:waiting:c4",
+            "c4:waiting:c1",
+            "c5:running",
+            "c5:fulfilled",
+            "c1:running",
+            "c1:fulfilled",
+            "c4:running",
+            "c4:fulfilled",
+            "c3:running",
+            "c2:running",
+            "c2:fulfilled",
+            "c3:fulfilled",
+            "t1:fulfilled"
         ]);
+        expect(r).toEqual([5, 1, 4, 2, 3]);
     });
 
     it('should fail if dependent task fails', async function () {
@@ -433,68 +522,79 @@ describe('Task', function () {
                     throw new Error('test');
                 r.push(i);
             });
-        const t5 = new Task(newFn(5), {name: 't5'});
-        const t1 = new Task(newFn(1), {name: 't1', dependencies: [t5]});
-        const t4 = new Task(newFn(4, true), {name: 't4', dependencies: ['t1']});
-        const t2 = new Task(newFn(2), {name: 't2', dependencies: [t4]});
-        const t3 = new Task(newFn(3), {name: 't3', dependencies: ['t4']});
-        const task = new Task([t1, t2, t3, t4, t5], {name: 'main'});
-
         const messages: string[] = [];
-        const onUpdate = logUpdates(messages);
-        task.on('update', onUpdate);
-        t1.on('update', onUpdate);
-        t2.on('update', onUpdate);
-        t3.on('update', onUpdate);
-        t4.on('update', onUpdate);
-        t5.on('update', onUpdate);
+        const onUpdateRecursive = logUpdates(messages);
+        const c5 = new Task(newFn(5), {name: 'c5'});
+        const c1 = new Task(newFn(1), {name: 'c1', dependencies: [c5]});
+        const c4 = new Task(newFn(4, true), {name: 'c4', dependencies: ['c1']});
+        const c2 = new Task(newFn(2), {name: 'c2', dependencies: [c4]});
+        const c3 = new Task(newFn(3), {name: 'c3', dependencies: ['c4']});
+        const task = new Task([c1, c2, c3, c4, c5], {id: 't1', onUpdateRecursive, concurrency: 10});
 
         await task.toPromise().catch(noOp);
         expect(task.status).toEqual('failed');
-        expect(r).toEqual([5, 1]);
-        expect(t4.status).toEqual('failed');
-        expect(t2.status).toEqual('failed');
-        expect(t3.status).toEqual('failed');
         expect(messages).toStrictEqual([
-            "main:running",
-            "t1:waiting:t5",
-            "t2:waiting:t4",
-            "t3:waiting:t4",
-            "t4:waiting:t1",
-            "t5:running",
-            "t5:fulfilled",
             "t1:running",
-            "t1:fulfilled",
-            "t4:running",
-            "t4:failed",
-            "t2:failed",
-            "t3:failed",
-            "main:failed"
+            "c1:waiting:c5",
+            "c2:waiting:c4",
+            "c3:waiting:c4",
+            "c4:waiting:c1",
+            "c5:running",
+            "c5:fulfilled",
+            "c1:running",
+            "c1:fulfilled",
+            "c4:running",
+            "c4:failed",
+            "t1:aborting",
+            "c3:aborting",
+            "c2:aborting",
+            "c3:failed",
+            "c2:failed",
+            "t1:failed"
         ]);
+        expect(r).toEqual([5, 1]);
     });
 
-    it('should cancel if dependent task cancels', async function () {
+    it('should abort if dependent task aborted', async function () {
         const r = [];
         const newFn = (i: number) => (
             async () => {
                 await delay(50 + (i * 5));
                 r.push(i);
             });
-        const t5 = new Task(newFn(5), {name: 't5'});
-        const t1 = new Task(newFn(1), {name: 't1', dependencies: [t5]});
-        const t4 = new Task(newFn(4), {name: 't4', dependencies: ['t1']});
-        const t2 = new Task(newFn(2), {name: 't2', dependencies: [t4]});
-        const t3 = new Task(newFn(3), {name: 't3', dependencies: ['t4']});
-        const task = new Task([t1, t2, t3, t4, t5]);
+        const messages: string[] = [];
+        const onUpdateRecursive = logUpdates(messages);
+        const c5 = new Task(newFn(5), {name: 'c5'});
+        const c1 = new Task(newFn(1), {name: 'c1', dependencies: [c5]});
+        const c4 = new Task(newFn(4), {name: 'c4', dependencies: ['c1']});
+        const c2 = new Task(newFn(2), {name: 'c2', dependencies: [c4]});
+        const c3 = new Task(newFn(3), {name: 'c3', dependencies: ['c4']});
+        const task = new Task([c1, c2, c3, c4, c5], {id: 't1', onUpdateRecursive, concurrency: 10});
         task.start();
-        await t5.toPromise();
-        t4.cancel();
+        c5.on('finish', () => c4.abort());
         await task.toPromise();
-        expect(task.status).toEqual('fulfilled');
+        expect(task.status).toEqual('aborted');
+        expect(messages).toStrictEqual([
+            "t1:running",
+            "c1:waiting:c5",
+            "c2:waiting:c4",
+            "c3:waiting:c4",
+            "c4:waiting:c1",
+            "c5:running",
+            "c5:fulfilled",
+            "c1:running",
+            "c4:aborting",
+            "c4:aborted",
+            "t1:aborting",
+            "c3:aborting",
+            "c2:aborting",
+            "c1:aborting",
+            "c3:aborted",
+            "c2:aborted",
+            "c1:fulfilled",
+            "t1:aborted"
+        ]);
         expect(r).toEqual([5, 1]);
-        expect(t4.status).toEqual('cancelled');
-        expect(t2.status).toEqual('cancelled');
-        expect(t3.status).toEqual('cancelled');
     });
 
     it('should run exclusive tasks one at a time', async function () {
@@ -504,35 +604,28 @@ describe('Task', function () {
                 await delay(50);
                 r.push(i);
             });
-
-        const t1 = new Task(newFn(1), {name: 't1'});
-        const t2 = new Task(newFn(2), {name: 't2', exclusive: true});
-        const t3 = new Task(newFn(3), {name: 't3'});
-        const t4 = new Task(newFn(4), {name: 't4'});
-        const task = new Task([t1, t2, t3, t4], {name: 'main', concurrency: 10});
-
         const messages: string[] = [];
-        const onUpdate = logUpdates(messages);
-        task.on('update', onUpdate);
-        t1.on('update', onUpdate);
-        t2.on('update', onUpdate);
-        t3.on('update', onUpdate);
-        t4.on('update', onUpdate);
+        const onUpdateRecursive = logUpdates(messages);
+        const c1 = new Task(newFn(1), {name: 'c1'});
+        const c2 = new Task(newFn(2), {name: 'c2', exclusive: true});
+        const c3 = new Task(newFn(3), {name: 'c3'});
+        const c4 = new Task(newFn(4), {name: 'c4'});
+        const task = new Task([c1, c2, c3, c4], {id: 't1', onUpdateRecursive, concurrency: 10});
 
         await task.toPromise();
         expect(task.status).toEqual('fulfilled');
         expect(r).toEqual([1, 2, 3, 4]);
         expect(messages).toStrictEqual([
-            "main:running",
             "t1:running",
-            "t1:fulfilled",
-            "t2:running",
-            "t2:fulfilled",
-            "t3:running",
-            "t4:running",
-            "t3:fulfilled",
-            "t4:fulfilled",
-            "main:fulfilled"
+            "c1:running",
+            "c2:running",
+            "c1:fulfilled",
+            "c2:fulfilled",
+            "c3:running",
+            "c4:running",
+            "c3:fulfilled",
+            "c4:fulfilled",
+            "t1:fulfilled"
         ]);
     });
 

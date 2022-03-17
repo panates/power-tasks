@@ -53,18 +53,18 @@ export class TaskQueue extends TypedEventEmitterClass<TaskQueueEvents>(AsyncEven
     }
 
     clearQueue() {
+        this._queue.forEach(task => task.abort());
         this._queue = new DoublyLinked();
     }
 
-    async cancelAll(): Promise<void> {
+    abortAll(): void {
         if (!this.size)
             return;
-        this._running.forEach(task => task.cancel());
-        this._queue.forEach(task => task.cancel());
-        return this.waitFor();
+        this.clearQueue();
+        this._running.forEach(task => task.abort());
     }
 
-    async waitFor(): Promise<void> {
+    async wait(): Promise<void> {
         if (!this.size)
             return Promise.resolve();
         return new Promise(resolve => {
