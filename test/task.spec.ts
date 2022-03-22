@@ -176,7 +176,8 @@ describe('Task', function () {
                 if (running > 2)
                     throw new Error('Failed');
                 await delay(50);
-            }).on('finish', () => running--));
+                running--;
+            }));
         }
         const task = new Task(a, {id: 't1', concurrency: 2, onUpdateRecursive});
         await task.toPromise();
@@ -185,16 +186,16 @@ describe('Task', function () {
             "t1-1:running",
             "t1-2:running",
             "t1-1:fulfilled",
-            "t1-2:fulfilled",
             "t1-3:running",
+            "t1-2:fulfilled",
             "t1-4:running",
             "t1-3:fulfilled",
-            "t1-4:fulfilled",
             "t1-5:running",
+            "t1-4:fulfilled",
             "t1-6:running",
             "t1-5:fulfilled",
-            "t1-6:fulfilled",
             "t1-7:running",
+            "t1-6:fulfilled",
             "t1-8:running",
             "t1-7:fulfilled",
             "t1-8:fulfilled",
