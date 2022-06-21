@@ -67,18 +67,24 @@ export class TaskQueue extends AsyncEventEmitter {
     });
   }
 
-  enqueuePrepend(task: TaskLike): Task {
+  enqueuePrepend<T = any>(task: TaskLike<T>): Task<T> {
     return this._enqueue(task, true);
   }
 
-  enqueue(task: TaskLike): Task {
+  enqueue<T = any>(task: TaskLike<T>): Task<T> {
     return this._enqueue(task, false);
   }
 
-  protected _enqueue(task: TaskLike, prepend: boolean): Task {
+  protected _enqueue<T = any>(task: TaskLike, prepend: boolean): Task<T> {
     if (this.maxQueue && this.size >= this.maxQueue)
       throw new Error(`Queue limit (${this.maxQueue}) exceeded`);
     const taskInstance = task instanceof Task ? task : new Task(task);
+    Object.defineProperty(taskInstance, '_isManaged', {
+      configurable: false,
+      writable: false,
+      enumerable: false,
+      value: true
+    })
     this.emit('enqueue', taskInstance);
     if (prepend)
       this._queue.unshift(taskInstance);

@@ -6,8 +6,8 @@ import {plural} from './utils.js';
 
 const debug = _debug('power-tasks:task');
 
-export type TaskFunction = (args: TaskFunctionArgs) => any | Promise<any>;
-export type TaskLike = Task | TaskFunction;
+export type TaskFunction<T = any> = (args: TaskFunctionArgs) => T | Promise<T>;
+export type TaskLike<T = any> = Task<T> | TaskFunction;
 export type TaskStatus = 'idle' | 'waiting' | 'running' | 'fulfilled' | 'failed' | 'aborting' | 'aborted';
 
 export interface TaskFunctionArgs {
@@ -78,6 +78,7 @@ export class Task<T = any> extends AsyncEventEmitter {
   protected _executeDuration?: number;
   protected _error?: any;
   protected _result?: T;
+  protected _isManaged?: boolean;
 
   constructor(children: TaskLike[], options?: Omit<TaskOptions, 'children'>)
   constructor(execute: TaskFunction, options?: TaskOptions)
@@ -228,16 +229,20 @@ export class Task<T = any> extends AsyncEventEmitter {
     return this;
   }
 
-  toPromise(): Promise<any> {
+  toPromise(): Promise<T> {
     return new Promise((resolve, reject) => {
-      if (this.isFinished)
-        resolve(this.status === 'fulfilled' ? this._result : undefined);
+      if (this.isFinished) {
+        if (this.isFailed)
+          reject(this.error);
+        else resolve(this.result);
+        return;
+      }
       this.once('finish', () => {
         if (this.isFailed)
           return reject(this.error);
         resolve(this.result);
       });
-      if (!this.isStarted)
+      if (!this.isStarted && !this._isManaged)
         this.start();
     })
   }
