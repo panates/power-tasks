@@ -31,7 +31,7 @@
   "dependencies": {
     "debug": "^4.3.4",
     "doublylinked": "^2.5.1",
-    "strict-typed-events": "^2.2.0"
+    "strict-typed-events": "^2.3.1"
   },
   "devDependencies": {
     "@babel/eslint-parser": "^7.19.1",
