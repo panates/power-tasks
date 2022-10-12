@@ -156,12 +156,12 @@ export class Task<T = any> extends AsyncEventEmitter {
     return this._dependencies;
   }
 
-  get isWaiting(): boolean {
+  get needWaiting(): boolean {
     if (this._waitingFor && this._waitingFor.size)
       return true;
     if (this._children) {
       for (const c of this._children) {
-        if (c.isWaiting)
+        if (c.needWaiting)
           return true;
       }
     }
@@ -384,7 +384,7 @@ export class Task<T = any> extends AsyncEventEmitter {
       }
 
       const finishCallback = async (t) => {
-        if (this.status !== 'waiting') {
+        if (this.isStarted && this.status !== 'waiting') {
           clearWait();
           return;
         }
@@ -519,11 +519,10 @@ export class Task<T = any> extends AsyncEventEmitter {
     ) return;
 
     const options = this.options;
-    // const children = this._children;
     if (this._childrenLeft) {
       // Check if we can run multiple child tasks
       for (const c of this._childrenLeft) {
-        if (c.status === 'running' && (options.serial || c.options.exclusive)) {
+        if ((c.isStarted && options.serial) || (c.status === 'running' && c.options.exclusive)) {
           c._pulse();
           return;
         }
@@ -539,7 +538,7 @@ export class Task<T = any> extends AsyncEventEmitter {
         if (k-- <= 0)
           return;
         c._start();
-        if (c.status === 'running' && (options.serial || c.options.exclusive))
+        if (options.serial || (c.status === 'running' && c.options.exclusive))
           return;
       }
     }
