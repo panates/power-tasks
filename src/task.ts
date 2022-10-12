@@ -242,7 +242,7 @@ export class Task<T = any> extends AsyncEventEmitter {
           });
           return;
         }
-        this._determineChildrenDependencies();
+        this._determineChildrenDependencies([]);
         this._start();
       });
     } else this._start();
@@ -335,9 +335,10 @@ export class Task<T = any> extends AsyncEventEmitter {
     handler(undefined, this._options.children);
   }
 
-  protected _determineChildrenDependencies(): void {
+  protected _determineChildrenDependencies(scope: Task[]): void {
     if (!this._children)
       return;
+
     const detectCircular = (t: Task, lookup: Task, path: string = '') => {
       if (!lookup._dependencies)
         return;
@@ -348,26 +349,29 @@ export class Task<T = any> extends AsyncEventEmitter {
       for (const l1 of lookup._dependencies.values())
         detectCircular(t, l1, path);
     }
+
+    const subScope = [...scope, ...Array.from(this._children)];
     for (const c of this._children.values()) {
-      c._determineChildrenDependencies();
+      c._determineChildrenDependencies(subScope);
       if (!c.options.dependencies)
         continue;
 
       const dependencies: Task[] = [];
       const waitingFor = new Set<Task>();
       for (const dep of c.options.dependencies) {
-        for (const dependentTask of this._children.values()) {
-          if (typeof dep === 'string' ? dependentTask.name === dep : (dependentTask === dep)) {
-            if (c === dependentTask)
-              throw new Error(`Task "${c.name}" depends on itself.`);
-            detectCircular(c, dependentTask);
-            if (dependentTask._dependencies?.includes(c))
-              throw new Error(`Task "${c.name}" has circular dependency with ${dependentTask.name}.`);
-            dependencies.push(dependentTask);
-            if (!dependentTask.isFinished)
-              waitingFor.add(dependentTask);
-          }
-        }
+        const dependentTask = subScope.find(x =>
+          typeof dep === 'string' ? x.name === dep : (x === dep)
+        )
+        if (!dependentTask)
+          throw new Error(`Dependent task (${dep}) of "${c.name}" task could not be found.`);
+        if (c === dependentTask)
+          throw new Error(`Task "${c.name}" depends on itself.`);
+        detectCircular(c, dependentTask);
+        if (dependentTask._dependencies?.includes(c))
+          throw new Error(`Task "${c.name}" has circular dependency with ${dependentTask.name}.`);
+        dependencies.push(dependentTask);
+        if (!dependentTask.isFinished)
+          waitingFor.add(dependentTask);
       }
       if (dependencies.length)
         c._dependencies = dependencies;

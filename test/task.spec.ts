@@ -635,14 +635,19 @@ describe('Task', function () {
   });
 
   it('should detect circular dependencies', async function () {
-    const messages: string[] = [];
-    const onUpdateRecursive = logUpdates(messages);
     const c1 = new Task(noOp, {name: 'c1', dependencies: ['c2']});
     const c2 = new Task(noOp, {name: 'c2', dependencies: ['c3']});
     const c3 = new Task(noOp, {name: 'c3', dependencies: ['c1']});
-    const task = new Task([c1, c2, c3], {id: 't1', onUpdateRecursive, concurrency: 10});
+    const task = new Task([c1, c2, c3], {id: 't1'});
 
     await expect(() => task.toPromise()).rejects.toThrow('Circular dependency detected');
+  });
+
+  it('should throw if dependent task could not be found', async function () {
+    const c1 = new Task(noOp, {name: 'c1', dependencies: ['c2']});
+    const task = new Task([c1], {id: 't1'});
+
+    await expect(() => task.toPromise()).rejects.toThrow('could not be found.');
   });
 
 });
