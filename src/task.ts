@@ -43,7 +43,7 @@ export interface TaskUpdateValues {
 }
 
 class TaskContext {
-  allTasks = new Set<Task>();
+  // allTasks = new Set<Task>();
   executingTasks = new Set<Task>();
   queue = new Set<Task>();
   concurrency!: number;
@@ -242,7 +242,7 @@ export class Task<T = any> extends AsyncEventEmitter {
           });
           return;
         }
-        this._captureDependencies();
+        this._determineChildrenDependencies();
         this._start();
       });
     } else this._start();
@@ -298,7 +298,7 @@ export class Task<T = any> extends AsyncEventEmitter {
             v._id = v._id || (this._id + '-' + (idx++));
             const listeners = this.listeners('update-recursive');
             listeners.forEach(listener => v.on('update-recursive', listener));
-            ctx.allTasks.add(v);
+            // ctx.allTasks.add(v);
             a.push(v);
           }
           return a;
@@ -335,86 +335,110 @@ export class Task<T = any> extends AsyncEventEmitter {
     handler(undefined, this._options.children);
   }
 
-  protected _captureDependencies(): void {
-    if (this.options.dependencies) {
-      debug(this._id, this.name ? '(' + this.name + ')' : '', this.status, '_captureDependencies');
-
-      const ctx = this[taskContextKey] as TaskContext;
-      const handleDependentAborted = (t: Task) => {
-        debug(this._id, this.name ? '(' + this.name + ')' : '', this.status, '_captureDependencies:handleDependentAborted');
-        const error: any = new Error('Dependent task' +
-          (t.name ? '(' + t.name + ')' : '') + 'has been ' + t.status);
-        error.failedTask = t;
-        this._update({
-          status: t.status,
-          message: error.message,
-          error
-        });
-      }
+  protected _determineChildrenDependencies(): void {
+    if (!this._children)
+      return;
+    const detectCircular = (t: Task, lookup: Task, path: string = '') => {
+      if (!lookup._dependencies)
+        return;
+      path = path || (t.name || t.id);
+      path += ' > ' + (lookup.name || lookup.id);
+      if (lookup._dependencies.includes(t))
+        throw new Error(`Circular dependency detected. ${path + ' > ' + (t.name || t.id)}`);
+      for (const l1 of lookup._dependencies.values())
+        detectCircular(t, l1, path);
+    }
+    for (const c of this._children.values()) {
+      c._determineChildrenDependencies();
+      if (!c.options.dependencies)
+        continue;
 
       const dependencies: Task[] = [];
       const waitingFor = new Set<Task>();
-      for (const dep of this.options.dependencies) {
-        for (const t of ctx.allTasks.values()) {
-          if (typeof dep === 'string' ? t.name === dep : (t === dep)) {
-            if (t.isFailed || t.status === 'aborted') {
-              handleDependentAborted(t);
-              return;
-            }
-            dependencies.push(t);
-            if (!t.isFinished)
-              waitingFor.add(t);
+      for (const dep of c.options.dependencies) {
+        for (const dependentTask of this._children.values()) {
+          if (typeof dep === 'string' ? dependentTask.name === dep : (dependentTask === dep)) {
+            if (c === dependentTask)
+              throw new Error(`Task "${c.name}" depends on itself.`);
+            detectCircular(c, dependentTask);
+            if (dependentTask._dependencies?.includes(c))
+              throw new Error(`Task "${c.name}" has circular dependency with ${dependentTask.name}.`);
+            dependencies.push(dependentTask);
+            if (!dependentTask.isFinished)
+              waitingFor.add(dependentTask);
           }
         }
       }
       if (dependencies.length)
-        this._dependencies = dependencies;
+        c._dependencies = dependencies;
       if (waitingFor.size)
-        this._waitingFor = waitingFor;
+        c._waitingFor = waitingFor;
+      c._captureDependencies();
+    }
+  }
 
-      const signal = this._abortController.signal;
-      const abortSignalCallback = () => clearWait();
-      signal.addEventListener('abort', abortSignalCallback, {once: true});
+  protected _captureDependencies(): void {
+    if (!this._waitingFor)
+      return;
+    debug(this._id, this.name ? '(' + this.name + ')' : '', this.status, '_captureDependencies');
 
-      const clearWait = () => {
-        for (const t of dependencies) {
-          t.removeListener('finish', finishCallback);
-        }
-        delete this._waitingFor;
-      }
+    const handleDependentAborted = (t: Task) => {
+      debug(this._id, this.name ? '(' + this.name + ')' : '', this.status, '_captureDependencies:handleDependentAborted');
+      const error: any = new Error('Dependent task' +
+        (t.name ? '(' + t.name + ')' : '') + 'has been ' + t.status);
+      error.failedTask = t;
+      this._update({
+        status: t.status,
+        message: error.message,
+        error
+      });
+    }
 
-      const finishCallback = async (t) => {
-        if (this.isStarted && this.status !== 'waiting') {
-          clearWait();
-          return;
-        }
-        waitingFor.delete(t);
-        if (t.isFailed || t.status === 'aborted') {
-          signal.removeEventListener('abort', abortSignalCallback);
-          if (this.isStarted)
-            this._abortChildren()
-              .then(() => {
-                handleDependentAborted(t);
-              })
-              .catch(noOp);
-          return;
-        }
-        if (!waitingFor.size) {
-          signal.removeEventListener('abort', abortSignalCallback);
-          delete this._waitingFor;
-          if (this.isStarted)
-            this._startChildren();
-        }
-      }
+    const waitingFor = this._waitingFor;
+    const signal = this._abortController.signal;
+    const abortSignalCallback = () => clearWait();
+    signal.addEventListener('abort', abortSignalCallback, {once: true});
 
+    const clearWait = () => {
       for (const t of waitingFor) {
-        t.prependOnceListener('finish', finishCallback);
+        t.removeListener('finish', finishCallback);
+      }
+      delete this._waitingFor;
+    }
+
+
+    const finishCallback = async (t) => {
+      if (this.isStarted && this.status !== 'waiting') {
+        clearWait();
+        return;
+      }
+      waitingFor.delete(t);
+      if (t.isFailed || t.status === 'aborted') {
+        signal.removeEventListener('abort', abortSignalCallback);
+        if (this.isStarted)
+          this._abortChildren()
+            .then(() => {
+              handleDependentAborted(t);
+            })
+            .catch(noOp);
+        return;
+      }
+      if (!waitingFor.size) {
+        signal.removeEventListener('abort', abortSignalCallback);
+        delete this._waitingFor;
+        if (this.isStarted)
+          this._startChildren();
       }
     }
-    if (this._children)
-      for (const c of this._children.values()) {
-        c._captureDependencies();
+
+    for (const t of waitingFor.values()) {
+      if (t.isFailed || t.status === 'aborted') {
+        handleDependentAborted(t);
+        return;
       }
+      t.prependOnceListener('finish', finishCallback);
+    }
+
   }
 
   protected _start(): void {
