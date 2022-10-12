@@ -523,7 +523,7 @@ export class Task<T = any> extends AsyncEventEmitter {
     if (this._childrenLeft) {
       // Check if we can run multiple child tasks
       for (const c of this._childrenLeft) {
-        if (c.isStarted && (options.serial || c.options.exclusive)) {
+        if (c.status === 'running' && (options.serial || c.options.exclusive)) {
           c._pulse();
           return;
         }
