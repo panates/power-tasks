@@ -1,6 +1,6 @@
-import {AsyncEventEmitter} from 'strict-typed-events';
+import { AsyncEventEmitter } from 'strict-typed-events';
 import DoublyLinked from 'doublylinked';
-import {Task, TaskLike} from './task.js';
+import { Task, TaskLike } from './task.js';
 
 export interface TaskQueueOptions {
   maxQueue?: number;
@@ -85,6 +85,7 @@ export class TaskQueue extends AsyncEventEmitter {
       enumerable: false,
       value: true
     })
+    taskInstance.once('error', (...args: any[]) => this.emitAsync('error', ...args));
     this.emit('enqueue', taskInstance);
     if (prepend)
       this._queue.unshift(taskInstance);

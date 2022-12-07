@@ -650,4 +650,11 @@ describe('Task', function () {
     await expect(() => task.toPromise()).rejects.toThrow('could not be found.');
   });
 
+  it('should emit "error" event on error', (done) => {
+    const task = new Task(() => {
+      throw new Error('Test error')
+    }).on('error', () => done());
+    task.toPromise().catch(noOp);
+  });
+
 });

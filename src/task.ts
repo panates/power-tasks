@@ -1,7 +1,6 @@
 import * as os from 'os';
 import { AsyncEventEmitter } from 'strict-typed-events';
 import _debug from 'debug';
-import './types.js';
 import { plural } from './utils.js';
 
 const debug = _debug('power-tasks:task');
@@ -49,7 +48,6 @@ class TaskContext {
   concurrency!: number;
   triggerPulse!: () => void;
 }
-
 
 const noOp = () => void (0);
 const taskContextKey = Symbol.for('power-tasks.Task.context');
@@ -653,6 +651,8 @@ export class Task<T = any> extends AsyncEventEmitter {
           delete this._abortTimer;
         }
         delete this[taskContextKey];
+        if (this.error)
+          this.emitAsync('error', this.error).catch(noOp);
         this.emitAsync('finish', this).catch(noOp);
         if (ctx)
           ctx.triggerPulse();
