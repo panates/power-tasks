@@ -15,16 +15,57 @@ export interface TaskFunctionArgs {
 }
 
 export interface TaskOptions {
+  /**
+   * Id of the task.
+   */
   id?: any;
+
+  /**
+   * Name of the task. This value is used to for dependency tree
+   */
   name?: string;
+
+  /**
+   * Arguments to be passed to task function.
+   */
   args?: any[];
+
+  /**
+   * The list of child tasks
+   */
   children?: TaskLike[] | (() => TaskLike[] | Promise<TaskLike[]>);
+
+  /**
+   * The list of tasks to be waited before running this task.
+   */
   dependencies?: (Task | string)[];
+
+  /**
+   * Number of concurrent tasks to run in parallel
+   */
   concurrency?: number;
+
+  /**
+   * Abort after first task failure
+   */
   bail?: boolean;
+
+  /**
+   * Run tasks one by one
+   */
   serial?: boolean;
+
+  /**
+   * Run the task exclusively. If set true, the tasks in the queue waits for this task to complete
+   * even concurrency is greater than 1
+   */
   exclusive?: boolean;
+
+  /**
+   * Time in milliseconds to wait for aborting tasks
+   */
   abortTimeout?: number;
+
   onStart?: (task: Task) => void;
   onFinish?: (task: Task) => void;
   onRun?: (task: Task) => void;
@@ -70,8 +111,9 @@ export class Task<T = any> extends AsyncEventEmitter {
   protected _abortController = new AbortController();
   protected _abortTimer?: NodeJS.Timer;
   protected _waitingFor?: Set<Task>;
-  protected _failedTasks?: Task[];
-  protected _abortedTasks?: Task[];
+  protected _failedChildren?: Task[];
+  protected _abortedChildren?: Task[];
+  protected _failedDependencies?: Task[];
   protected _childrenLeft?: Set<Task>;
 
   constructor(children: TaskLike[], options?: Omit<TaskOptions, 'children'>)
@@ -152,6 +194,14 @@ export class Task<T = any> extends AsyncEventEmitter {
 
   get dependencies(): Task[] | undefined {
     return this._dependencies;
+  }
+
+  get failedChildren(): Task[] | undefined {
+    return this._failedChildren;
+  }
+
+  get failedDependencies(): Task[] | undefined {
+    return this._failedDependencies;
   }
 
   get needWaiting(): boolean {
@@ -383,23 +433,31 @@ export class Task<T = any> extends AsyncEventEmitter {
     if (!this._waitingFor)
       return;
     debug(this._id, this.name ? '(' + this.name + ')' : '', this.status, '_captureDependencies');
-
-    const handleDependentAborted = (t: Task) => {
-      debug(this._id, this.name ? '(' + this.name + ')' : '', this.status, '_captureDependencies:handleDependentAborted');
-      const error: any = new Error('Dependent task' +
-        (t.name ? '(' + t.name + ')' : '') + 'has been ' + t.status);
-      error.failedTask = t;
-      this._update({
-        status: t.status,
-        message: error.message,
-        error
-      });
-    }
-
+    const failedDependencies: Task[] = [];
     const waitingFor = this._waitingFor;
     const signal = this._abortController.signal;
+
     const abortSignalCallback = () => clearWait();
     signal.addEventListener('abort', abortSignalCallback, {once: true});
+
+    const handleDependentAborted = () => {
+      debug(this._id, this.name ? '(' + this.name + ')' : '', this.status, '_captureDependencies:handleDependentAborted');
+      signal.removeEventListener('abort', abortSignalCallback);
+      this._abortChildren()
+        .then(() => {
+          const isFailed = !!failedDependencies.find(d => d.status === 'failed');
+          const error: any = new Error('Aborted due to ' + (isFailed ? 'fail' : 'cancellation') +
+            ' of dependent ' + plural('task', !!failedDependencies.length));
+          error.failedDependencies = failedDependencies;
+          this._failedDependencies = failedDependencies;
+          this._update({
+            status: isFailed ? 'failed' : 'aborted',
+            message: error.message,
+            error
+          });
+        })
+        .catch(noOp);
+    }
 
     const clearWait = () => {
       for (const t of waitingFor) {
@@ -408,7 +466,6 @@ export class Task<T = any> extends AsyncEventEmitter {
       delete this._waitingFor;
     }
 
-
     const finishCallback = async (t) => {
       if (this.isStarted && this.status !== 'waiting') {
         clearWait();
@@ -416,18 +473,20 @@ export class Task<T = any> extends AsyncEventEmitter {
       }
       waitingFor.delete(t);
       if (t.isFailed || t.status === 'aborted') {
-        signal.removeEventListener('abort', abortSignalCallback);
-        if (this.isStarted)
-          this._abortChildren()
-            .then(() => {
-              handleDependentAborted(t);
-            })
-            .catch(noOp);
-        return;
+        failedDependencies.push(t);
       }
+
+      // If all dependent tasks completed
       if (!waitingFor.size) {
-        signal.removeEventListener('abort', abortSignalCallback);
         delete this._waitingFor;
+        signal.removeEventListener('abort', abortSignalCallback);
+
+        // If any of dependent tasks are failed
+        if (failedDependencies.length) {
+          handleDependentAborted();
+          return;
+        }
+        // If all dependent tasks completed successfully we continue to next step (startChildren)
         if (this.isStarted)
           this._startChildren();
       }
@@ -435,12 +494,13 @@ export class Task<T = any> extends AsyncEventEmitter {
 
     for (const t of waitingFor.values()) {
       if (t.isFailed || t.status === 'aborted') {
-        handleDependentAborted(t);
-        return;
-      }
-      t.prependOnceListener('finish', finishCallback);
+        waitingFor.delete(t);
+        failedDependencies.push(t);
+      } else
+        t.prependOnceListener('finish', finishCallback);
     }
-
+    if (!waitingFor.size)
+      handleDependentAborted();
   }
 
   protected _start(): void {
@@ -468,8 +528,8 @@ export class Task<T = any> extends AsyncEventEmitter {
 
     const options = this.options;
     const childrenLeft = this._childrenLeft = new Set(children);
-    const failedTasks: Task[] = this._failedTasks = [];
-    const abortedTasks: Task[] = this._abortedTasks = [];
+    const failedChildren: Task[] = [];
+    // const abortedChildren: Task[] = this._abortedChildren = [];
     debug(this._id, this.name ? '(' + this.name + ')' : '', this.status,
       '_startChildren:a', children.length);
 
@@ -486,9 +546,7 @@ export class Task<T = any> extends AsyncEventEmitter {
       t.removeListener('status-change', statusChangeCallback);
       childrenLeft.delete(t);
       if (t.isFailed || t.status === 'aborted') {
-        if (t.isFailed)
-          failedTasks.push(t);
-        else abortedTasks.push(t);
+        failedChildren.push(t);
         if (options.bail && childrenLeft.size) {
           const running = !!children.find(c => c.isStarted);
           if (running)
@@ -500,22 +558,14 @@ export class Task<T = any> extends AsyncEventEmitter {
 
       if (!childrenLeft.size) {
         delete this._childrenLeft;
-        let error: any;
-        if (failedTasks.length) {
-          error = new Error(failedTasks.length +
-            ' child ' + plural('task', failedTasks.length) +
-            ' has been failed');
-          error.failedTasks = failedTasks;
-        }
-        if (abortedTasks.length) {
-          error = new Error(abortedTasks.length +
-            ' child ' + plural('task', abortedTasks.length) +
-            ' has been aborted');
-          error.abortedTasks = abortedTasks;
-        }
-        if (error) {
+        if (failedChildren.length) {
+          const isFailed = !!failedChildren.find(d => d.status === 'failed');
+          const error: any = new Error('Aborted due to ' + (isFailed ? 'fail' : 'cancellation') +
+            ' of child ' + plural('task', !!failedChildren.length));
+          error.failedChildren = failedChildren;
+          this._failedChildren = failedChildren;
           this._update({
-            status: failedTasks.length ? 'failed' : 'aborted',
+            status: isFailed ? 'failed' : 'aborted',
             error,
             message: error.message
           });
