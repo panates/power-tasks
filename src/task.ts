@@ -604,6 +604,18 @@ export class Task<T = any> extends AsyncEventEmitter {
         }
       }
 
+      // Check waiting children
+      let hasExclusive = false;
+      let hasStarted = false;
+      for (const c of this._childrenLeft) {
+        if (c.isFinished)
+          continue;
+        hasExclusive = hasExclusive || !!c.options.exclusive
+        hasStarted = hasStarted || c.isStarted;
+      }
+      if (hasExclusive && hasStarted)
+        return;
+
       // start children
       let k = ctx.concurrency - ctx.executingTasks.size;
       for (const c of this._childrenLeft) {
