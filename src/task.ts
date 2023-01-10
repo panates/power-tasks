@@ -625,6 +625,8 @@ export class Task<T = any> extends AsyncEventEmitter {
         }
         if (k-- <= 0)
           return;
+        if (c.options.exclusive && (ctx.executingTasks.size || ctx.executingTasks.size))
+          return;
         c._start();
         if (options.serial || (c.status === 'running' && c.options.exclusive))
           return;

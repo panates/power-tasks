@@ -623,8 +623,8 @@ describe('Task', function () {
     expect(messages).toStrictEqual([
       "t1:running",
       "c1:running",
-      "c2:running",
       "c1:fulfilled",
+      "c2:running",
       "c2:fulfilled",
       "c3:running",
       "c4:running",
