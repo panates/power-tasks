@@ -489,6 +489,7 @@ export class Task<T = any> extends AsyncEventEmitter {
         // If all dependent tasks completed successfully we continue to next step (startChildren)
         if (this.isStarted)
           this._startChildren();
+        else await this.emitAsync('wait-end');
       }
     }
 
@@ -576,6 +577,7 @@ export class Task<T = any> extends AsyncEventEmitter {
     }
 
     for (const c of children) {
+      c.prependOnceListener('wait-end', ()=>this._pulse());
       c.prependOnceListener('finish', finishCallback);
       c.prependListener('status-change', statusChangeCallback);
     }
@@ -606,14 +608,14 @@ export class Task<T = any> extends AsyncEventEmitter {
 
       // Check waiting children
       let hasExclusive = false;
-      let hasStarted = false;
+      let hasRunning = false;
       for (const c of this._childrenLeft) {
         if (c.isFinished)
           continue;
         hasExclusive = hasExclusive || !!c.options.exclusive
-        hasStarted = hasStarted || c.isStarted;
+        hasRunning = hasRunning || c.status === 'running';
       }
-      if (hasExclusive && hasStarted)
+      if (hasExclusive && hasRunning)
         return;
 
       // start children
