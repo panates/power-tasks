@@ -643,13 +643,6 @@ describe('Task', function () {
     await expect(() => task.toPromise()).rejects.toThrow('Circular dependency detected');
   });
 
-  it('should throw if dependent task could not be found', async function () {
-    const c1 = new Task(noOp, {name: 'c1', dependencies: ['c2']});
-    const task = new Task([c1], {id: 't1'});
-
-    await expect(() => task.toPromise()).rejects.toThrow('could not be found.');
-  });
-
   it('should emit "error" event on error', (done) => {
     const task = new Task(() => {
       throw new Error('Test error')

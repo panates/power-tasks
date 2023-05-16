@@ -1,9 +1,6 @@
 import * as os from 'os';
 import { AsyncEventEmitter } from 'strict-typed-events';
-import _debug from 'debug';
 import { plural } from './utils.js';
-
-const debug = _debug('power-tasks:task');
 
 export type TaskFunction<T = any> = (args: TaskFunctionArgs) => T | Promise<T>;
 export type TaskLike<T = any> = Task<T> | TaskFunction;
@@ -410,10 +407,8 @@ export class Task<T = any> extends AsyncEventEmitter {
         const dependentTask = subScope.find(x =>
           typeof dep === 'string' ? x.name === dep : (x === dep)
         )
-        if (!dependentTask)
-          throw new Error(`Dependent task (${dep}) of "${c.name}" task could not be found.`);
-        if (c === dependentTask)
-          throw new Error(`Task "${c.name}" depends on itself.`);
+        if (!dependentTask || c === dependentTask)
+          continue;
         detectCircular(c, dependentTask);
         if (dependentTask._dependencies?.includes(c))
           throw new Error(`Task "${c.name}" has circular dependency with ${dependentTask.name}.`);
@@ -432,7 +427,6 @@ export class Task<T = any> extends AsyncEventEmitter {
   protected _captureDependencies(): void {
     if (!this._waitingFor)
       return;
-    debug(this._id, this.name ? '(' + this.name + ')' : '', this.status, '_captureDependencies');
     const failedDependencies: Task[] = [];
     const waitingFor = this._waitingFor;
     const signal = this._abortController.signal;
@@ -441,7 +435,6 @@ export class Task<T = any> extends AsyncEventEmitter {
     signal.addEventListener('abort', abortSignalCallback, {once: true});
 
     const handleDependentAborted = () => {
-      debug(this._id, this.name ? '(' + this.name + ')' : '', this.status, '_captureDependencies:handleDependentAborted');
       signal.removeEventListener('abort', abortSignalCallback);
       this._abortChildren()
         .then(() => {
@@ -507,7 +500,6 @@ export class Task<T = any> extends AsyncEventEmitter {
   protected _start(): void {
     if (this.isStarted || this.isFinished)
       return;
-    debug(this._id, this.name ? '(' + this.name + ')' : '', this.status, '_start');
 
     if (this._waitingFor) {
       this._update({
@@ -530,9 +522,6 @@ export class Task<T = any> extends AsyncEventEmitter {
     const options = this.options;
     const childrenLeft = this._childrenLeft = new Set(children);
     const failedChildren: Task[] = [];
-    // const abortedChildren: Task[] = this._abortedChildren = [];
-    debug(this._id, this.name ? '(' + this.name + ')' : '', this.status,
-      '_startChildren:a', children.length);
 
     const statusChangeCallback = async (t: Task) => {
       if (this.status === 'aborting')
@@ -577,7 +566,7 @@ export class Task<T = any> extends AsyncEventEmitter {
     }
 
     for (const c of children) {
-      c.prependOnceListener('wait-end', ()=>this._pulse());
+      c.prependOnceListener('wait-end', () => this._pulse());
       c.prependOnceListener('finish', finishCallback);
       c.prependListener('status-change', statusChangeCallback);
     }
@@ -586,8 +575,6 @@ export class Task<T = any> extends AsyncEventEmitter {
   }
 
   protected _pulse() {
-    debug(this._id, this.name ? '(' + this.name + ')' : '', this.status, '_pulse:a');
-
     const ctx = this[taskContextKey] as TaskContext;
 
     if (this.isFinished ||
@@ -639,7 +626,6 @@ export class Task<T = any> extends AsyncEventEmitter {
       return;
 
     this._update({status: 'running', message: 'Running'});
-    debug(this._id, this.name ? '(' + this.name + ')' : '', this.status, '_pulse:c');
     ctx.executingTasks.add(this);
     const t = Date.now();
     const signal = this._abortController.signal;
@@ -648,7 +634,6 @@ export class Task<T = any> extends AsyncEventEmitter {
       signal
     }))()
       .then((result: any) => {
-        debug(this._id, this.name ? '(' + this.name + ')' : '', 'fulfilled', '_pulse:execute:then');
         ctx.executingTasks.delete(this);
         this._executeDuration = Date.now() - t;
         this._update({
@@ -668,7 +653,6 @@ export class Task<T = any> extends AsyncEventEmitter {
           });
           return;
         }
-        debug(this._id, this.name ? '(' + this.name + ')' : '', 'failed', '_pulse:execute:catch');
         this._update({
           status: 'failed',
           error,
