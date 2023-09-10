@@ -8,25 +8,25 @@ workflows:
     jobs:
       - test:
           version: '16.20'
-        filters:
-          branches:
-            only:
-              - main
-              - dev
+          filters:
+            branches:
+              only:
+                - main
+                - dev
       - test:
           version: '18.17'
-        filters:
-          branches:
-            only:
-              - main
-              - dev
+          filters:
+            branches:
+              only:
+                - main
+                - dev
       - test:
           version: '20.5'
-        filters:
-          branches:
-            only:
-              - main
-              - dev
+          filters:
+            branches:
+              only:
+                - main
+                - dev
 
 jobs:
   test:
