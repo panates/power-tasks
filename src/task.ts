@@ -5,6 +5,7 @@ import { plural } from './utils.js';
 export type TaskFunction<T = any> = (args: TaskFunctionArgs) => T | Promise<T>;
 export type TaskLike<T = any> = Task<T> | TaskFunction;
 export type TaskStatus = 'idle' | 'waiting' | 'running' | 'fulfilled' | 'failed' | 'aborting' | 'aborted';
+const osCPUs = os.cpus().length;
 
 export interface TaskFunctionArgs {
   task: Task;
@@ -106,7 +107,7 @@ export class Task<T = any> extends AsyncEventEmitter {
   protected _result?: T;
   protected _isManaged?: boolean;
   protected _abortController = new AbortController();
-  protected _abortTimer?: NodeJS.Timer;
+  protected _abortTimer?: NodeJS.Timeout;
   protected _waitingFor?: Set<Task>;
   protected _failedChildren?: Task[];
   protected _abortedChildren?: Task[];
@@ -268,7 +269,7 @@ export class Task<T = any> extends AsyncEventEmitter {
       return this;
     this._id = this._id || ('t' + (++idGen));
     const ctx = this[taskContextKey] = new TaskContext();
-    ctx.concurrency = this.options.concurrency || os.cpus().length;
+    ctx.concurrency = this.options.concurrency || osCPUs;
     let pulseTimer: NodeJS.Timer | undefined;
     ctx.triggerPulse = () => {
       if (pulseTimer || this.isFinished) return;
