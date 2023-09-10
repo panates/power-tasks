@@ -4,7 +4,7 @@
     "sourceMap": false,
     "declaration": true,
     "noEmit": false,
-    "module": "ESNext",
+    "module": "NodeNext",
     "outDir": "esm",
     "moduleResolution": "NodeNext"
   }
