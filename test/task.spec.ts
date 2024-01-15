@@ -96,7 +96,7 @@ describe('Task', function () {
     const messages: string[] = [];
     const onUpdateRecursive = logUpdates(messages);
     const task = new Task((({task}) => {
-      return task.children.reduce((a, t) => a + t.result, 0);
+      return task.children!.reduce((a, t) => a + t.result, 0);
     }), {
       id: 't1',
       children: [
@@ -133,7 +133,7 @@ describe('Task', function () {
     const messages: string[] = [];
     const onUpdateRecursive = logUpdates(messages);
     const task = new Task((({task}) => {
-      return task.children.reduce((a, t) => a + t.result, 0);
+      return task.children!.reduce((a, t) => a + t.result, 0);
     }), {
       id: 't1',
       children: [
@@ -167,7 +167,7 @@ describe('Task', function () {
   });
 
   it('should limit concurrent tasks', async function () {
-    const a = [];
+    const a: Task[] = [];
     const messages: string[] = [];
     const onUpdateRecursive = logUpdates(messages);
     let running = 0;
@@ -208,7 +208,7 @@ describe('Task', function () {
     let i = 0;
     const messages: string[] = [];
     const onUpdateRecursive = logUpdates(messages);
-    const task = new Task(({task: task1}) => task1.children.length, {
+    const task = new Task(({task: task1}) => task1.children!.length, {
       id: 't1',
       children: async () => {
         return [
@@ -231,11 +231,11 @@ describe('Task', function () {
     expect(i).toEqual(3);
     expect(task.status).toEqual('fulfilled');
     expect(task.children).toBeDefined();
-    expect(task.children.length).toEqual(2);
-    expect(task.children[1].children).toBeDefined();
-    expect(task.children[1].children.length).toEqual(1);
-    expect(task.children[0].status).toEqual('fulfilled');
-    expect(task.children[1].status).toEqual('fulfilled');
+    expect(task.children!.length).toEqual(2);
+    expect(task.children![1].children).toBeDefined();
+    expect(task.children![1].children!.length).toEqual(1);
+    expect(task.children![0].status).toEqual('fulfilled');
+    expect(task.children![1].status).toEqual('fulfilled');
     expect(messages).toStrictEqual([
       "t1:running",
       "t1-1:running",
@@ -249,8 +249,8 @@ describe('Task', function () {
   });
 
   it('should abort child tasks', async function () {
-    const aborted = [];
-    const children = [];
+    const aborted: any[] = [];
+    const children: any[] = [];
     const messages: string[] = [];
     const onUpdateRecursive = logUpdates(messages);
     for (let i = 0; i < 5; i++) {
@@ -372,9 +372,9 @@ describe('Task', function () {
     });
     await task.toPromise().catch(noOp);
     expect(task.status).toEqual('failed');
-    expect(task.children[0].status).toEqual('failed');
-    expect(task.children[1].status).toEqual('aborted');
-    expect(task.children[2].status).toEqual('aborted');
+    expect(task.children![0].status).toEqual('failed');
+    expect(task.children![1].status).toEqual('aborted');
+    expect(task.children![2].status).toEqual('aborted');
     expect(messages).toStrictEqual([
       "t1:running",
       "t1-1:running",
@@ -418,9 +418,9 @@ describe('Task', function () {
 
     await task.toPromise().catch(noOp);
     expect(task.status).toEqual('failed');
-    expect(task.children[0].status).toEqual('failed');
-    expect(task.children[1].status).toEqual('fulfilled');
-    expect(task.children[2].status).toEqual('fulfilled');
+    expect(task.children![0].status).toEqual('failed');
+    expect(task.children![1].status).toEqual('fulfilled');
+    expect(task.children![2].status).toEqual('fulfilled');
     expect(messages).toStrictEqual([
       "t1:running",
       "t1-1:running",
@@ -461,9 +461,9 @@ describe('Task', function () {
 
     await task.toPromise().catch(noOp);
     expect(task.status).toEqual('failed');
-    expect(task.children[0].status).toEqual('failed');
-    expect(task.children[1].status).toEqual('fulfilled');
-    expect(task.children[2].status).toEqual('fulfilled');
+    expect(task.children![0].status).toEqual('failed');
+    expect(task.children![1].status).toEqual('fulfilled');
+    expect(task.children![2].status).toEqual('fulfilled');
     expect(messages).toStrictEqual([
       "t1:running",
       "t1-1:running",
@@ -477,7 +477,7 @@ describe('Task', function () {
   });
 
   it('should wait for dependent task to complete before execute', async function () {
-    const r = [];
+    const r: number[] = [];
     const newFn = (i: number) => (
       async () => {
         await delay(50 + (i * 5));
@@ -517,7 +517,7 @@ describe('Task', function () {
   });
 
   it('should fail if dependent task fails', async function () {
-    const r = [];
+    const r: any[] = [];
     const newFn = (i: number, fail?: boolean) => (
       async () => {
         await delay(50 + (i * 5));
@@ -560,7 +560,7 @@ describe('Task', function () {
   });
 
   it('should abort if dependent task aborted', async function () {
-    const r = [];
+    const r: any[] = [];
     const newFn = (i: number) => (
       async () => {
         await delay(50 + (i * 5));
@@ -603,7 +603,7 @@ describe('Task', function () {
   });
 
   it('should run exclusive tasks one at a time', async function () {
-    const r = [];
+    const r: any[] = [];
     const newFn = (i: number) => (
       async () => {
         await delay(50);

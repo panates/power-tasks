@@ -103,7 +103,7 @@ describe('TaskQueue', function () {
 
   it('should add a task to first location in the queue', async function () {
     const queue = new TaskQueue({concurrency: 1});
-    const q = [];
+    const q: number[] = [];
     queue.enqueue(async () => {
       q.push(1);
     });
