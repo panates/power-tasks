@@ -260,7 +260,7 @@ export class Task<T = any> extends AsyncEventEmitter {
           return;
         }
         this._update({status: 'aborted', message: 'aborted'});
-      })
+      }).catch(noOp)
     return this;
   }
 
@@ -326,8 +326,8 @@ export class Task<T = any> extends AsyncEventEmitter {
         try {
           const x: any = value();
           handler(undefined, x);
-        } catch (err) {
-          handler(err);
+        } catch (err2) {
+          handler(err2);
         }
         return;
       }
@@ -343,8 +343,7 @@ export class Task<T = any> extends AsyncEventEmitter {
             v[taskContextKey] = ctx;
             v._id = v._id || (this._id + '-' + (idx++));
             const listeners = this.listeners('update-recursive');
-            listeners.forEach(listener => v.on('update-recursive', listener));
-            // ctx.allTasks.add(v);
+            listeners.forEach(listener => v.on('update-recursive', listener as any));
             a.push(v);
           }
           return a;
@@ -353,14 +352,14 @@ export class Task<T = any> extends AsyncEventEmitter {
         if (children && children.length) {
           this._children = children;
           let i = 0;
-          const next = (err?) => {
-            if (err)
-              return callback(err);
+          const next = (err2?) => {
+            if (err2)
+              return callback(err2);
             if (i >= children.length)
               return callback();
             const c = children[i++];
             if (c.options.children)
-              c._determineChildrenTree((err) => next(err));
+              c._determineChildrenTree((err3) => next(err3));
             else
               next();
           }
@@ -372,7 +371,7 @@ export class Task<T = any> extends AsyncEventEmitter {
       if (value && typeof value.then === 'function') {
         (value as Promise<TaskLike[]>)
           .then(v => handler(undefined, v))
-          .catch(err => handler(err))
+          .catch(e => handler(e))
         return;
       }
 

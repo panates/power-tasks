@@ -95,8 +95,8 @@ describe('Task', function () {
   it('should execute child tasks', async function () {
     const messages: string[] = [];
     const onUpdateRecursive = logUpdates(messages);
-    const task = new Task((({task}) => {
-      return task.children!.reduce((a, t) => a + t.result, 0);
+    const task = new Task(((args) => {
+      return args.task.children!.reduce((a, t) => a + t.result, 0);
     }), {
       id: 't1',
       children: [
@@ -132,8 +132,8 @@ describe('Task', function () {
   it('should execute child tasks serial', async function () {
     const messages: string[] = [];
     const onUpdateRecursive = logUpdates(messages);
-    const task = new Task((({task}) => {
-      return task.children!.reduce((a, t) => a + t.result, 0);
+    const task = new Task(((args) => {
+      return args.task.children!.reduce((a, t) => a + t.result, 0);
     }), {
       id: 't1',
       children: [
