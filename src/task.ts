@@ -357,20 +357,22 @@ export class Task<T = any> extends AsyncEventEmitter {
   protected _determineChildrenDependencies(scope: Task[]): void {
     if (!this._children) return;
 
-    const detectCircular = (t: Task, lookup: Task, path: string = "", list?: Set<Task>) => {
-      path = (path || t.name || t.id) + " > " + (lookup.name || lookup.id);
-      if (list?.has(lookup)) throw new Error(`Circular dependency detected. ${path}`);
-      if (!list) {
-        list = new Set();
-        list.add(t);
-      }
-      list.add(lookup);
-      if (lookup._dependencies) {
-        for (const l1 of lookup._dependencies.values()) detectCircular(t, l1, path, list);
-      }
-      if (lookup.children) {
-        for (const c of lookup.children) {
-          detectCircular(t, c, path, list);
+    const detectCircular = (t: Task, dependencies: Task[], path: string = "", list?: Set<Task>) => {
+      path = path || t.name || t.id;
+      list = list || new Set();
+      for (const l1 of dependencies.values()) {
+        if (l1 === t) throw new Error(`Circular dependency detected. ${path}`);
+        if (list.has(l1)) continue;
+        list.add(l1);
+        if (l1._dependencies) detectCircular(t, l1._dependencies, path + " > " + (l1.name || l1.id), list);
+
+        if (l1.children) {
+          for (const c of l1.children) {
+            if (c === t) throw new Error(`Circular dependency detected. ${path}`);
+            if (list.has(c)) continue;
+            list.add(c);
+            if (c._dependencies) detectCircular(t, c._dependencies, path, list);
+          }
         }
       }
     };
@@ -385,13 +387,10 @@ export class Task<T = any> extends AsyncEventEmitter {
       for (const dep of c.options.dependencies) {
         const dependentTask = subScope.find((x) => (typeof dep === "string" ? x.name === dep : x === dep));
         if (!dependentTask || c === dependentTask) continue;
-        detectCircular(c, dependentTask);
-        if (dependentTask._dependencies?.includes(c)) {
-          throw new Error(`Task "${c.name}" has circular dependency with ${dependentTask.name}.`);
-        }
         dependencies.push(dependentTask);
         if (!dependentTask.isFinished) waitingFor.add(dependentTask);
       }
+      detectCircular(c, dependencies);
       if (dependencies.length) c._dependencies = dependencies;
       if (waitingFor.size) c._waitingFor = waitingFor;
       c._captureDependencies();
