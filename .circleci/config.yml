@@ -1,3 +1,4 @@
+#file: noinspection YAMLSchemaValidation
 # This config is equivalent to both the '.circleci/extended/orb-free.yml' and the base '.circleci/config.yml'
 version: 2.1
 orbs:
@@ -7,21 +8,21 @@ workflows:
   main:
     jobs:
       - test:
-          version: '16.20'
+          version: "16.20"
           filters:
             branches:
               only:
                 - main
                 - dev
       - test:
-          version: '18.17'
+          version: "18.17"
           filters:
             branches:
               only:
                 - main
                 - dev
       - test:
-          version: '20.5'
+          version: "20.5"
           filters:
             branches:
               only:

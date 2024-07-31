@@ -11,13 +11,14 @@ Powerful task management for Javascript.
 
 ## Installation
 
-  - `npm install power-tasks --save`
+- `npm install power-tasks --save`
 
 ## Node Compatibility
 
-  - node `>= 14.x`;
-  
+- node `>= 14.x`;
+
 ### License
+
 [MIT](LICENSE)
 
 [npm-image]: https://img.shields.io/npm/v/power-tasks.svg
@@ -31,8 +32,8 @@ Powerful task management for Javascript.
 [gitter-image]: https://badges.gitter.im/panates/power-tasks.svg
 [gitter-url]: https://gitter.im/panates/power-tasks?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge
 [dependencies-image]: https://david-dm.org/panates/power-tasks/status.svg
-[dependencies-url]:https://david-dm.org/panates/power-tasks
+[dependencies-url]: https://david-dm.org/panates/power-tasks
 [devdependencies-image]: https://david-dm.org/panates/power-tasks/dev-status.svg
-[devdependencies-url]:https://david-dm.org/panates/power-tasks?type=dev
+[devdependencies-url]: https://david-dm.org/panates/power-tasks?type=dev
 [quality-image]: http://npm.packagequality.com/shield/power-tasks.png
 [quality-url]: http://packagequality.com/#?package=power-tasks

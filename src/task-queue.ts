@@ -1,6 +1,6 @@
-import { AsyncEventEmitter } from 'strict-typed-events';
-import DoublyLinked from 'doublylinked';
-import { Task, TaskLike } from './task.js';
+import DoublyLinked from "doublylinked";
+import { AsyncEventEmitter } from "strict-typed-events";
+import { Task, TaskLike } from "./task.js";
 
 export interface TaskQueueOptions {
   maxQueue?: number;
@@ -48,22 +48,20 @@ export class TaskQueue extends AsyncEventEmitter {
   }
 
   clearQueue() {
-    this._queue.forEach(task => task.abort());
+    this._queue.forEach((task) => task.abort());
     this._queue = new DoublyLinked();
   }
 
   abortAll(): void {
-    if (!this.size)
-      return;
+    if (!this.size) return;
     this.clearQueue();
-    this._running.forEach(task => task.abort());
+    this._running.forEach((task) => task.abort());
   }
 
   async wait(): Promise<void> {
-    if (!this.size)
-      return Promise.resolve();
-    return new Promise(resolve => {
-      this.once('finish', resolve);
+    if (!this.size) return Promise.resolve();
+    return new Promise((resolve) => {
+      this.once("finish", resolve);
     });
   }
 
@@ -76,40 +74,34 @@ export class TaskQueue extends AsyncEventEmitter {
   }
 
   protected _enqueue<T = any>(task: TaskLike, prepend: boolean): Task<T> {
-    if (this.maxQueue && this.size >= this.maxQueue)
-      throw new Error(`Queue limit (${this.maxQueue}) exceeded`);
+    if (this.maxQueue && this.size >= this.maxQueue) throw new Error(`Queue limit (${this.maxQueue}) exceeded`);
     const taskInstance = task instanceof Task ? task : new Task(task);
-    Object.defineProperty(taskInstance, '_isManaged', {
+    Object.defineProperty(taskInstance, "_isManaged", {
       configurable: false,
       writable: false,
       enumerable: false,
-      value: true
-    })
-    taskInstance.once('error', (...args: any[]) => this.emitAsync('error', ...args));
-    this.emit('enqueue', taskInstance);
-    if (prepend)
-      this._queue.unshift(taskInstance);
+      value: true,
+    });
+    taskInstance.once("error", (...args: any[]) => this.emitAsync("error", ...args));
+    this.emit("enqueue", taskInstance);
+    if (prepend) this._queue.unshift(taskInstance);
     else this._queue.push(taskInstance);
     this._pulse();
     return taskInstance;
   }
 
   protected _pulse() {
-    if (this.paused)
-      return;
+    if (this.paused) return;
     while (!this.concurrency || this._running.size < this.concurrency) {
       const task = this._queue.shift();
-      if (!task)
-        return;
+      if (!task) return;
       this._running.add(task);
-      task.prependOnceListener('finish', () => {
+      task.prependOnceListener("finish", () => {
         this._running.delete(task);
-        if (!(this._running.size || this._queue.length))
-          return this.emit('finish');
+        if (!(this._running.size || this._queue.length)) return this.emit("finish");
         this._pulse();
-      })
+      });
       task.start();
     }
   }
-
 }

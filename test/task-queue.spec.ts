@@ -1,36 +1,35 @@
-import './env';
-import { Task, TaskQueue } from '../src';
-import { delay } from '../src/utils';
+import "./env";
+import { Task, TaskQueue } from "../src";
+import { delay } from "../src/utils";
 
-const noOp = () => void (0);
+const noOp = () => undefined;
 
-describe('TaskQueue', function () {
-
-  it('should construct', function () {
+describe("TaskQueue", () => {
+  it("should construct", () => {
     const queue = new TaskQueue();
     expect(queue.maxQueue).toEqual(undefined);
   });
 
-  it('should construct with options', function () {
+  it("should construct with options", () => {
     const queue = new TaskQueue({
       maxQueue: 100,
-      concurrency: 5
+      concurrency: 5,
     });
     expect(queue.paused).toEqual(false);
     expect(queue.maxQueue).toEqual(100);
     expect(queue.concurrency).toEqual(5);
   });
 
-  it('should not exceed maxQueue', function () {
+  it("should not exceed maxQueue", () => {
     const queue = new TaskQueue({
-      maxQueue: 1
+      maxQueue: 1,
     });
     queue.enqueue(noOp);
     expect(() => queue.enqueue(noOp)).toThrow(/exceeded/);
   });
 
-  it('should execute sync function task', async function () {
-    const queue = new TaskQueue({concurrency: 1});
+  it("should execute sync function task", async () => {
+    const queue = new TaskQueue({ concurrency: 1 });
     queue.enqueue(async () => await delay(50));
     queue.enqueue(async () => await delay(50));
     await delay(5);
@@ -41,7 +40,7 @@ describe('TaskQueue', function () {
     expect(queue.queued).toEqual(0);
   });
 
-  it('should execute async function task', function (done) {
+  it("should execute async function task", (done) => {
     const queue = new TaskQueue();
     queue.enqueue(async () => {
       await delay(5);
@@ -49,36 +48,35 @@ describe('TaskQueue', function () {
     });
   });
 
-  it('should execute Task instance', function (done) {
+  it("should execute Task instance", (done) => {
     const queue = new TaskQueue();
-    queue.enqueue(new Task(() => {
-      setTimeout(done, 5);
-    }));
+    queue.enqueue(
+      new Task(() => {
+        setTimeout(done, 5);
+      }),
+    );
   });
 
-  it('should task return a TaskInstance', async function () {
+  it("should task return a TaskInstance", async () => {
     const queue = new TaskQueue();
-    const task = queue.enqueue(() => {
-      return 123;
-    });
+    const task = queue.enqueue(() => 123);
     expect(task).toBeInstanceOf(Task);
     const r = await task.toPromise();
     expect(r).toStrictEqual(123);
   });
 
-  it('should emit "enqueue" event', function (done) {
+  it('should emit "enqueue" event', (done) => {
     const queue = new TaskQueue();
-    queue.on('enqueue', () => {
+    queue.on("enqueue", () => {
       done();
     });
-    queue.enqueue(() => {
-    });
+    queue.enqueue(() => {});
   });
 
-  it('should emit "finish" event after all task completed', function (done) {
+  it('should emit "finish" event after all task completed', (done) => {
     const queue = new TaskQueue();
     let i = 0;
-    queue.on('finish', () => {
+    queue.on("finish", () => {
       try {
         expect(i).toEqual(2);
       } catch (e) {
@@ -94,15 +92,14 @@ describe('TaskQueue', function () {
     });
   });
 
-  it('should enqueue return Task instance', function () {
+  it("should enqueue return Task instance", () => {
     const queue = new TaskQueue();
-    const p = queue.enqueue(() => {
-    });
+    const p = queue.enqueue(() => {});
     expect(p).toBeInstanceOf(Task);
   });
 
-  it('should add a task to first location in the queue', async function () {
-    const queue = new TaskQueue({concurrency: 1});
+  it("should add a task to first location in the queue", async () => {
+    const queue = new TaskQueue({ concurrency: 1 });
     const q: number[] = [];
     queue.enqueue(async () => {
       q.push(1);
@@ -117,11 +114,11 @@ describe('TaskQueue', function () {
     expect(q).toEqual([1, 3, 2]);
   });
 
-  it('should execute next on error', function (done) {
+  it("should execute next on error", (done) => {
     const queue = new TaskQueue();
     queue.enqueue(async () => {
       await delay(10);
-      throw new Error('test');
+      throw new Error("test");
     });
     queue.enqueue(async () => {
       await delay(10);
@@ -129,7 +126,7 @@ describe('TaskQueue', function () {
     });
   });
 
-  it('should pause', function (done) {
+  it("should pause", (done) => {
     const queue = new TaskQueue();
     queue.pause();
     let i = 0;
@@ -147,22 +144,22 @@ describe('TaskQueue', function () {
     });
   });
 
-  it('should clear', async function () {
-    const queue = new TaskQueue({concurrency: 1});
+  it("should clear", async () => {
+    const queue = new TaskQueue({ concurrency: 1 });
     let err;
     queue.enqueue(async () => {
       await delay(10);
     });
     queue.enqueue(async () => {
-      err = new Error('Failed');
+      err = new Error("Failed");
     });
     queue.clearQueue();
     await queue.wait();
     expect(err).not.toBeDefined();
   });
 
-  it('should abort all tasks', async function () {
-    const queue = new TaskQueue({concurrency: 1});
+  it("should abort all tasks", async () => {
+    const queue = new TaskQueue({ concurrency: 1 });
     queue.enqueue(async () => {
       await delay(10);
     });
@@ -170,18 +167,17 @@ describe('TaskQueue', function () {
     const t3 = queue.enqueue(async () => 0);
     queue.abortAll();
     await queue.wait();
-    expect(t2.status).toEqual('aborted');
-    expect(t3.status).toEqual('aborted');
+    expect(t2.status).toEqual("aborted");
+    expect(t3.status).toEqual("aborted");
     expect(queue.running).toEqual(0);
     expect(queue.queued).toEqual(0);
   });
 
   it('should emit "error" on error', (done) => {
-    const queue = new TaskQueue({concurrency: 1});
-    queue.on('error', () => done());
+    const queue = new TaskQueue({ concurrency: 1 });
+    queue.on("error", () => done());
     queue.enqueue(async () => {
-      throw new Error('Test error');
+      throw new Error("Test error");
     });
   });
-
 });
