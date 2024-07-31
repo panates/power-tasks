@@ -17,7 +17,8 @@
   "types": "./typings/index.d.ts",
   "dependencies": {
     "doublylinked": "^2.5.4",
-    "strict-typed-events": "^2.4.0"
+    "strict-typed-events": "^2.4.0",
+    "tslib": "^2.6.3"
   },
   "devDependencies": {
     "@panates/eslint-config": "^1.0.11",
