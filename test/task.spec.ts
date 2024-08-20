@@ -1,6 +1,6 @@
-import "./env";
-import { AbortError, Task } from "../src";
-import { delay } from "../src/utils";
+import "./env.js";
+import { AbortError, Task } from "../src/index.js";
+import { delay } from "../src/utils.js";
 
 const noOp = () => undefined;
 const logUpdates = (messages: string[]) => (task: Task) => {

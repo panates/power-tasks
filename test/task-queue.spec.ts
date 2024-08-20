@@ -1,6 +1,6 @@
-import "./env";
-import { Task, TaskQueue } from "../src";
-import { delay } from "../src/utils";
+import "./env.js";
+import { Task, TaskQueue } from "../src/index.js";
+import { delay } from "../src/utils.js";
 
 const noOp = () => undefined;
 
