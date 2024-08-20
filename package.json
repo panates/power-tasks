@@ -1,7 +1,7 @@
 {
   "name": "power-tasks",
   "description": "Powerful task management for JavaScript",
-  "version": "1.10.1",
+  "version": "1.11.0",
   "author": "Panates",
   "license": "MIT",
   "dependencies": {
