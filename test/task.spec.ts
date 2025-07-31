@@ -1,4 +1,4 @@
-import { expect } from 'expect';
+import { expect } from "expect";
 import { AbortError, Task } from "../src/index.js";
 import { delay } from "../src/utils.js";
 
@@ -13,7 +13,7 @@ const logUpdates = (messages: string[]) => (task: Task) => {
 describe("Task", () => {
   it("should execute sync Task", async () => {
     let i = 0;
-    const task = new Task(() => ++i, {id: "t1"});
+    const task = new Task(() => ++i, { id: "t1" });
     const messages: string[] = [];
     const onUpdate = logUpdates(messages);
     task.on("update", onUpdate);
@@ -31,7 +31,7 @@ describe("Task", () => {
         await delay(50);
         return ++i;
       },
-      {id: "t1"},
+      { id: "t1" },
     );
     const messages: string[] = [];
     const onUpdate = logUpdates(messages);
@@ -44,11 +44,11 @@ describe("Task", () => {
 
   it("should abort", async () => {
     const task = new Task(
-      async ({signal}) => {
+      async ({ signal }) => {
         await delay(20);
         if (signal.aborted) throw new AbortError();
       },
-      {id: "t1"},
+      { id: "t1" },
     );
     const messages: string[] = [];
     const onUpdate = logUpdates(messages);
@@ -89,20 +89,23 @@ describe("Task", () => {
   it("should execute child tasks", async () => {
     const messages: string[] = [];
     const onUpdateRecursive = logUpdates(messages);
-    const task = new Task((args) => args.task.children!.reduce((a, t) => a + t.result, 0), {
-      id: "t1",
-      children: [
-        new Task(() => 1),
-        new Task(async () => 2),
-        () => 3,
-        async () => {
-          await delay(50);
-          return 4;
-        },
-      ],
-      onUpdateRecursive,
-      concurrency: 10,
-    });
+    const task = new Task(
+      (args) => args.task.children!.reduce((a, t) => a + t.result, 0),
+      {
+        id: "t1",
+        children: [
+          new Task(() => 1),
+          new Task(async () => 2),
+          () => 3,
+          async () => {
+            await delay(50);
+            return 4;
+          },
+        ],
+        onUpdateRecursive,
+        concurrency: 10,
+      },
+    );
     const r = await task.toPromise();
     expect(task.status).toEqual("fulfilled");
     expect(r).toEqual(10);
@@ -124,20 +127,23 @@ describe("Task", () => {
   it("should execute child tasks serial", async () => {
     const messages: string[] = [];
     const onUpdateRecursive = logUpdates(messages);
-    const task = new Task((args) => args.task.children!.reduce((a, t) => a + t.result, 0), {
-      id: "t1",
-      children: [
-        new Task(() => 1),
-        new Task(async () => 2),
-        () => 3,
-        async () => {
-          await delay(50);
-          return 4;
-        },
-      ],
-      onUpdateRecursive,
-      serial: true,
-    });
+    const task = new Task(
+      (args) => args.task.children!.reduce((a, t) => a + t.result, 0),
+      {
+        id: "t1",
+        children: [
+          new Task(() => 1),
+          new Task(async () => 2),
+          () => 3,
+          async () => {
+            await delay(50);
+            return 4;
+          },
+        ],
+        onUpdateRecursive,
+        serial: true,
+      },
+    );
     const r = await task.toPromise();
     expect(task.status).toEqual("fulfilled");
     expect(r).toEqual(10);
@@ -171,7 +177,7 @@ describe("Task", () => {
         }),
       );
     }
-    const task = new Task(a, {id: "t1", concurrency: 2, onUpdateRecursive});
+    const task = new Task(a, { id: "t1", concurrency: 2, onUpdateRecursive });
     await task.toPromise();
     expect(messages).toStrictEqual([
       "t1:running",
@@ -199,7 +205,7 @@ describe("Task", () => {
     let i = 0;
     const messages: string[] = [];
     const onUpdateRecursive = logUpdates(messages);
-    const task = new Task(({task: task1}) => task1.children!.length, {
+    const task = new Task(({ task: task1 }) => task1.children!.length, {
       id: "t1",
       children: async () => [
         new Task(() => {
@@ -246,7 +252,7 @@ describe("Task", () => {
     for (let i = 0; i < 5; i++) {
       const x = i + 1;
       const c = new Task(
-        async ({signal}) =>
+        async ({ signal }) =>
           new Promise((resolve, reject) => {
             const timer = setTimeout(resolve, 1000);
             signal.addEventListener("abort", () => {
@@ -305,12 +311,12 @@ describe("Task", () => {
           await delay(10);
           throw new Error("test");
         }),
-        new Task(async ({signal}) => {
+        new Task(async ({ signal }) => {
           await delay(60);
           if (signal.aborted) c++;
           else i++;
         }),
-        new Task(async ({signal}) => {
+        new Task(async ({ signal }) => {
           await delay(40);
           if (signal.aborted) c++;
           else i++;
@@ -348,11 +354,11 @@ describe("Task", () => {
           await delay(50);
           throw new Error("test");
         }),
-        new Task(async ({signal}) => {
+        new Task(async ({ signal }) => {
           await delay(200);
           if (signal.aborted) throw new AbortError();
         }),
-        new Task(async ({signal}) => {
+        new Task(async ({ signal }) => {
           await delay(150);
           if (signal.aborted) throw new AbortError();
         }),
@@ -394,11 +400,11 @@ describe("Task", () => {
           await delay(50);
           throw new Error("test");
         }),
-        new Task(async ({signal}) => {
+        new Task(async ({ signal }) => {
           await delay(200);
           if (signal.aborted) throw new AbortError();
         }),
-        new Task(async ({signal}) => {
+        new Task(async ({ signal }) => {
           await delay(150);
           if (signal.aborted) throw new AbortError();
         }),
@@ -438,11 +444,11 @@ describe("Task", () => {
           await delay(50);
           throw new Error("test");
         }),
-        new Task(async ({signal}) => {
+        new Task(async ({ signal }) => {
           await delay(200);
           if (signal.aborted) throw new AbortError();
         }),
-        new Task(async ({signal}) => {
+        new Task(async ({ signal }) => {
           await delay(150);
           if (signal.aborted) throw new AbortError();
         }),
@@ -481,12 +487,16 @@ describe("Task", () => {
     };
     const messages: string[] = [];
     const onUpdateRecursive = logUpdates(messages);
-    const c5 = new Task(newFn(5), {name: "c5"});
-    const c1 = new Task(newFn(1), {name: "c1", dependencies: [c5]});
-    const c4 = new Task(newFn(4), {name: "c4", dependencies: ["c1"]});
-    const c2 = new Task(newFn(2), {name: "c2", dependencies: [c4]});
-    const c3 = new Task(newFn(3), {name: "c3", dependencies: ["c4"]});
-    const task = new Task([c1, c2, c3, c4, c5], {id: "t1", onUpdateRecursive, concurrency: 10});
+    const c5 = new Task(newFn(5), { name: "c5" });
+    const c1 = new Task(newFn(1), { name: "c1", dependencies: [c5] });
+    const c4 = new Task(newFn(4), { name: "c4", dependencies: ["c1"] });
+    const c2 = new Task(newFn(2), { name: "c2", dependencies: [c4] });
+    const c3 = new Task(newFn(3), { name: "c3", dependencies: ["c4"] });
+    const task = new Task([c1, c2, c3, c4, c5], {
+      id: "t1",
+      onUpdateRecursive,
+      concurrency: 10,
+    });
 
     await task.toPromise();
     expect(task.status).toEqual("fulfilled");
@@ -521,12 +531,16 @@ describe("Task", () => {
     };
     const messages: string[] = [];
     const onUpdateRecursive = logUpdates(messages);
-    const c5 = new Task(newFn(5), {name: "c5"});
-    const c1 = new Task(newFn(1), {name: "c1", dependencies: [c5]});
-    const c4 = new Task(newFn(4, true), {name: "c4", dependencies: ["c1"]});
-    const c2 = new Task(newFn(2), {name: "c2", dependencies: [c4]});
-    const c3 = new Task(newFn(3), {name: "c3", dependencies: ["c4"]});
-    const task = new Task([c1, c2, c3, c4, c5], {id: "t1", onUpdateRecursive, concurrency: 10});
+    const c5 = new Task(newFn(5), { name: "c5" });
+    const c1 = new Task(newFn(1), { name: "c1", dependencies: [c5] });
+    const c4 = new Task(newFn(4, true), { name: "c4", dependencies: ["c1"] });
+    const c2 = new Task(newFn(2), { name: "c2", dependencies: [c4] });
+    const c3 = new Task(newFn(3), { name: "c3", dependencies: ["c4"] });
+    const task = new Task([c1, c2, c3, c4, c5], {
+      id: "t1",
+      onUpdateRecursive,
+      concurrency: 10,
+    });
 
     await task.toPromise().catch(noOp);
     expect(task.status).toEqual("failed");
@@ -561,12 +575,16 @@ describe("Task", () => {
     };
     const messages: string[] = [];
     const onUpdateRecursive = logUpdates(messages);
-    const c5 = new Task(newFn(5), {name: "c5"});
-    const c1 = new Task(newFn(1), {name: "c1", dependencies: [c5]});
-    const c4 = new Task(newFn(4), {name: "c4", dependencies: ["c1"]});
-    const c2 = new Task(newFn(2), {name: "c2", dependencies: [c4]});
-    const c3 = new Task(newFn(3), {name: "c3", dependencies: ["c4"]});
-    const task = new Task([c1, c2, c3, c4, c5], {id: "t1", onUpdateRecursive, concurrency: 10});
+    const c5 = new Task(newFn(5), { name: "c5" });
+    const c1 = new Task(newFn(1), { name: "c1", dependencies: [c5] });
+    const c4 = new Task(newFn(4), { name: "c4", dependencies: ["c1"] });
+    const c2 = new Task(newFn(2), { name: "c2", dependencies: [c4] });
+    const c3 = new Task(newFn(3), { name: "c3", dependencies: ["c4"] });
+    const task = new Task([c1, c2, c3, c4, c5], {
+      id: "t1",
+      onUpdateRecursive,
+      concurrency: 10,
+    });
     task.start();
     c5.on("finish", () => c4.abort());
     await task.toPromise();
@@ -603,11 +621,15 @@ describe("Task", () => {
     };
     const messages: string[] = [];
     const onUpdateRecursive = logUpdates(messages);
-    const c1 = new Task(newFn(1), {name: "c1"});
-    const c2 = new Task(newFn(2), {name: "c2", exclusive: true});
-    const c3 = new Task(newFn(3), {name: "c3"});
-    const c4 = new Task(newFn(4), {name: "c4"});
-    const task = new Task([c1, c2, c3, c4], {id: "t1", onUpdateRecursive, concurrency: 10});
+    const c1 = new Task(newFn(1), { name: "c1" });
+    const c2 = new Task(newFn(2), { name: "c2", exclusive: true });
+    const c3 = new Task(newFn(3), { name: "c3" });
+    const c4 = new Task(newFn(4), { name: "c4" });
+    const task = new Task([c1, c2, c3, c4], {
+      id: "t1",
+      onUpdateRecursive,
+      concurrency: 10,
+    });
 
     await task.toPromise();
     expect(task.status).toEqual("fulfilled");
@@ -627,12 +649,14 @@ describe("Task", () => {
   });
 
   it("should detect circular dependencies", async () => {
-    const c1 = new Task(noOp, {name: "c1", dependencies: ["c2"]});
-    const c2 = new Task(noOp, {name: "c2", dependencies: ["c3"]});
-    const c3 = new Task(noOp, {name: "c3", dependencies: ["c1"]});
-    const task = new Task([c1, c2, c3], {id: "t1"});
+    const c1 = new Task(noOp, { name: "c1", dependencies: ["c2"] });
+    const c2 = new Task(noOp, { name: "c2", dependencies: ["c3"] });
+    const c3 = new Task(noOp, { name: "c3", dependencies: ["c1"] });
+    const task = new Task([c1, c2, c3], { id: "t1" });
 
-    await expect(() => task.toPromise()).rejects.toThrow("Circular dependency detected");
+    await expect(() => task.toPromise()).rejects.toThrow(
+      "Circular dependency detected",
+    );
   });
 
   it('should emit "error" event on error', (done) => {

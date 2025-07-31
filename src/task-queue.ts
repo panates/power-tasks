@@ -74,7 +74,8 @@ export class TaskQueue extends AsyncEventEmitter {
   }
 
   protected _enqueue<T = any>(task: TaskLike, prepend: boolean): Task<T> {
-    if (this.maxQueue && this.size >= this.maxQueue) throw new Error(`Queue limit (${this.maxQueue}) exceeded`);
+    if (this.maxQueue && this.size >= this.maxQueue)
+      throw new Error(`Queue limit (${this.maxQueue}) exceeded`);
     const taskInstance = task instanceof Task ? task : new Task(task);
     Object.defineProperty(taskInstance, "_isManaged", {
       configurable: false,
@@ -82,7 +83,9 @@ export class TaskQueue extends AsyncEventEmitter {
       enumerable: false,
       value: true,
     });
-    taskInstance.once("error", (...args: any[]) => this.emitAsync("error", ...args));
+    taskInstance.once("error", (...args: any[]) =>
+      this.emitAsync("error", ...args),
+    );
     this.emit("enqueue", taskInstance);
     if (prepend) this._queue.unshift(taskInstance);
     else this._queue.push(taskInstance);
@@ -98,7 +101,8 @@ export class TaskQueue extends AsyncEventEmitter {
       this._running.add(task);
       task.prependOnceListener("finish", () => {
         this._running.delete(task);
-        if (!(this._running.size || this._queue.length)) return this.emit("finish");
+        if (!(this._running.size || this._queue.length))
+          return this.emit("finish");
         this._pulse();
       });
       task.start();

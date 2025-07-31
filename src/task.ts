@@ -4,7 +4,14 @@ import { plural } from "./utils.js";
 
 export type TaskFunction<T = any> = (args: TaskFunctionArgs) => T | Promise<T>;
 export type TaskLike<T = any> = Task<T> | TaskFunction;
-export type TaskStatus = "idle" | "waiting" | "running" | "fulfilled" | "failed" | "aborting" | "aborted";
+export type TaskStatus =
+  | "idle"
+  | "waiting"
+  | "running"
+  | "fulfilled"
+  | "failed"
+  | "aborting"
+  | "aborted";
 const osCPUs = os.cpus().length;
 
 export interface TaskFunctionArgs {
@@ -129,9 +136,11 @@ export class Task<T = any> extends AsyncEventEmitter {
     if (options.onStart) this.on("start", options.onStart);
     if (options.onFinish) this.on("finish", options.onFinish);
     if (options.onRun) this.on("run", options.onRun);
-    if (options.onStatusChange) this.on("status-change", options.onStatusChange);
+    if (options.onStatusChange)
+      this.on("status-change", options.onStatusChange);
     if (options.onUpdate) this.on("update", options.onUpdate);
-    if (options.onUpdateRecursive) this.on("update-recursive", options.onUpdateRecursive);
+    if (options.onUpdateRecursive)
+      this.on("update-recursive", options.onUpdateRecursive);
   }
 
   get id(): string {
@@ -163,7 +172,11 @@ export class Task<T = any> extends AsyncEventEmitter {
   }
 
   get isFinished(): boolean {
-    return this.status === "fulfilled" || this.status === "failed" || this.status === "aborted";
+    return (
+      this.status === "fulfilled" ||
+      this.status === "failed" ||
+      this.status === "aborted"
+    );
   }
 
   get isFailed(): boolean {
@@ -205,7 +218,10 @@ export class Task<T = any> extends AsyncEventEmitter {
   }
 
   getWaitingTasks(): Task[] | undefined {
-    if (!(this.status === "waiting" && this._waitingFor && this._waitingFor.size)) return;
+    if (
+      !(this.status === "waiting" && this._waitingFor && this._waitingFor.size)
+    )
+      return;
     const out = Array.from(this._waitingFor);
     if (this._children) {
       for (const c of this._children) {
@@ -318,13 +334,18 @@ export class Task<T = any> extends AsyncEventEmitter {
         const children = value.reduce<Task[]>((a, v) => {
           // noinspection SuspiciousTypeOfGuard
           if (typeof v === "function") {
-            v = new Task(v, { concurrency: options.concurrency, bail: options.bail });
+            v = new Task(v, {
+              concurrency: options.concurrency,
+              bail: options.bail,
+            });
           }
           if (v instanceof Task) {
             v[taskContextKey] = ctx;
             v._id = v._id || this._id + "-" + idx++;
             const listeners = this.listeners("update-recursive");
-            listeners.forEach((listener) => v.on("update-recursive", listener as any));
+            listeners.forEach((listener) =>
+              v.on("update-recursive", listener as any),
+            );
             a.push(v);
           }
           return a;
@@ -337,7 +358,8 @@ export class Task<T = any> extends AsyncEventEmitter {
             if (err2) return callback(err2);
             if (i >= children.length) return callback();
             const c = children[i++];
-            if (c.options.children) c._determineChildrenTree((err3) => next(err3));
+            if (c.options.children)
+              c._determineChildrenTree((err3) => next(err3));
             else next();
           };
           next();
@@ -345,7 +367,9 @@ export class Task<T = any> extends AsyncEventEmitter {
         return;
       }
       if (value && typeof value.then === "function") {
-        (value as Promise<TaskLike[]>).then((v) => handler(undefined, v)).catch((e) => handler(e));
+        (value as Promise<TaskLike[]>)
+          .then((v) => handler(undefined, v))
+          .catch((e) => handler(e));
         return;
       }
 
@@ -357,18 +381,30 @@ export class Task<T = any> extends AsyncEventEmitter {
   protected _determineChildrenDependencies(scope: Task[]): void {
     if (!this._children) return;
 
-    const detectCircular = (t: Task, dependencies: Task[], path: string = "", list?: Set<Task>) => {
+    const detectCircular = (
+      t: Task,
+      dependencies: Task[],
+      path: string = "",
+      list?: Set<Task>,
+    ) => {
       path = path || t.name || t.id;
       list = list || new Set();
       for (const l1 of dependencies.values()) {
         if (l1 === t) throw new Error(`Circular dependency detected. ${path}`);
         if (list.has(l1)) continue;
         list.add(l1);
-        if (l1._dependencies) detectCircular(t, l1._dependencies, path + " > " + (l1.name || l1.id), list);
+        if (l1._dependencies)
+          detectCircular(
+            t,
+            l1._dependencies,
+            path + " > " + (l1.name || l1.id),
+            list,
+          );
 
         if (l1.children) {
           for (const c of l1.children) {
-            if (c === t) throw new Error(`Circular dependency detected. ${path}`);
+            if (c === t)
+              throw new Error(`Circular dependency detected. ${path}`);
             if (list.has(c)) continue;
             list.add(c);
             if (c._dependencies) detectCircular(t, c._dependencies, path, list);
@@ -385,7 +421,9 @@ export class Task<T = any> extends AsyncEventEmitter {
       const dependencies: Task[] = [];
       const waitingFor = new Set<Task>();
       for (const dep of c.options.dependencies) {
-        const dependentTask = subScope.find((x) => (typeof dep === "string" ? x.name === dep : x === dep));
+        const dependentTask = subScope.find((x) =>
+          typeof dep === "string" ? x.name === dep : x === dep,
+        );
         if (!dependentTask || c === dependentTask) continue;
         dependencies.push(dependentTask);
         if (!dependentTask.isFinished) waitingFor.add(dependentTask);
@@ -410,7 +448,9 @@ export class Task<T = any> extends AsyncEventEmitter {
       signal.removeEventListener("abort", abortSignalCallback);
       this._abortChildren()
         .then(() => {
-          const isFailed = !!failedDependencies.find((d) => d.status === "failed");
+          const isFailed = !!failedDependencies.find(
+            (d) => d.status === "failed",
+          );
           const error: any = new Error(
             "Aborted due to " +
               (isFailed ? "fail" : "cancellation") +
@@ -497,8 +537,10 @@ export class Task<T = any> extends AsyncEventEmitter {
 
     const statusChangeCallback = async (t: Task) => {
       if (this.status === "aborting") return;
-      if (t.status === "running") this._update({ status: "running", message: "Running" });
-      if (t.status === "waiting") this._update({ status: "waiting", message: "Waiting" });
+      if (t.status === "running")
+        this._update({ status: "running", message: "Running" });
+      if (t.status === "waiting")
+        this._update({ status: "waiting", message: "Waiting" });
     };
 
     const finishCallback = async (t: Task) => {
@@ -508,7 +550,8 @@ export class Task<T = any> extends AsyncEventEmitter {
         failedChildren.push(t);
         if (options.bail && childrenLeft.size) {
           const running = !!children.find((c) => c.isStarted);
-          if (running) this._update({ status: "aborting", message: "Aborting" });
+          if (running)
+            this._update({ status: "aborting", message: "Aborting" });
           this._abortChildren().catch(noOp);
           return;
         }
@@ -549,13 +592,22 @@ export class Task<T = any> extends AsyncEventEmitter {
   protected _pulse() {
     const ctx = this[taskContextKey] as TaskContext;
 
-    if (this.isFinished || this._waitingFor || this.status === "aborting" || ctx.executingTasks.has(this)) return;
+    if (
+      this.isFinished ||
+      this._waitingFor ||
+      this.status === "aborting" ||
+      ctx.executingTasks.has(this)
+    )
+      return;
 
     const options = this.options;
     if (this._childrenLeft) {
       // Check if we can run multiple child tasks
       for (const c of this._childrenLeft) {
-        if ((c.isStarted && options.serial) || (c.status === "running" && c.options.exclusive)) {
+        if (
+          (c.isStarted && options.serial) ||
+          (c.status === "running" && c.options.exclusive)
+        ) {
           c._pulse();
           return;
         }
@@ -579,13 +631,22 @@ export class Task<T = any> extends AsyncEventEmitter {
           continue;
         }
         if (k-- <= 0) return;
-        if (c.options.exclusive && (ctx.executingTasks.size || ctx.executingTasks.size)) return;
+        if (
+          c.options.exclusive &&
+          (ctx.executingTasks.size || ctx.executingTasks.size)
+        )
+          return;
         c._start();
-        if (options.serial || (c.status === "running" && c.options.exclusive)) return;
+        if (options.serial || (c.status === "running" && c.options.exclusive))
+          return;
       }
     }
 
-    if ((this._childrenLeft && this._childrenLeft.size) || ctx.executingTasks.size >= ctx.concurrency) return;
+    if (
+      (this._childrenLeft && this._childrenLeft.size) ||
+      ctx.executingTasks.size >= ctx.concurrency
+    )
+      return;
 
     this._update({ status: "running", message: "Running" });
     ctx.executingTasks.add(this);
