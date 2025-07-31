@@ -2,8 +2,11 @@
   "extends": "../tsconfig-base.json",
   "include": ["**/*.ts"],
   "compilerOptions": {
-    "types": ["node", "jest"],
-    "noEmit": true,
-    "sourceMap": true
+    "types": ["node", "mocha"],
+    "sourceMap": true,
+    "baseUrl": "./",
+    "paths": {
+      "valgen": ["../src/index.js"]
+    }
   }
 }

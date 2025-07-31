@@ -1,4 +1,4 @@
-import "./env.js";
+import { expect } from 'expect';
 import { Task, TaskQueue } from "../src/index.js";
 import { delay } from "../src/utils.js";
 
