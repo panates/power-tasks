@@ -33,15 +33,12 @@
   },
   "scripts": {
     "compile": "tsc --noEmit",
+    "prebuild": "npm run clean:build && npm run lint",
+    "build": "tsc -b tsconfig-build.json",
+    "postbuild": "node ./support/postbuild.cjs && rimraf build/*.tsbuildinfo",
     "clean": "npm run clean:src && npm run clean:dist",
-    "clean:dist": "rimraf build coverage",
+    "clean:build": "rimraf build *.tsbuildinfo",
     "clean:src": "ts-cleanup -s src --all | ts-cleanup -s test",
-    "prebuild": "npm run clean:dist && npm run lint",
-    "build": "npm run build:cjs && npm run build:esm",
-    "build:cjs": "tsc -b tsconfig-build-cjs.json && cp support/package.cjs.json ./build/cjs/package.json",
-    "build:esm": "tsc -b tsconfig-build-esm.json && cp support/package.esm.json ./build/esm/package.json",
-    "postbuild": "npm run postbuild:copyfiles && node ./support/postbuild.cjs",
-    "postbuild:copyfiles": "cp LICENSE README.md CHANGELOG.md ./build",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --max-warnings=0 --fix",
     "format": "prettier . --write --log-level=warn",
@@ -53,23 +50,18 @@
     "version": "auto-changelog -p --starting-version v4.0.0 && git add CHANGELOG.md"
   },
   "type": "module",
+  "module": "./index.js",
+  "types": "./index.d.ts",
   "exports": {
     ".": {
-      "import": {
-        "types": "./types/index.d.ts",
-        "default": "./esm/index.js"
-      },
-      "require": {
-        "types": "./types/index.d.cts",
-        "default": "./cjs/index.js"
-      },
-      "default": "./esm/index.js"
+      "types": "./index.d.ts",
+      "default": "./index.js"
     },
     "./package.json": "./package.json"
   },
-  "main": "./cjs/index.js",
-  "module": "./esm/index.js",
-  "types": "./types/index.d.ts",
+  "engines": {
+    "node": ">=20.0"
+  },
   "contributors": [
     "Eray Hanoglu <e.hanoglu@panates.com>"
   ],
@@ -77,17 +69,6 @@
     "type": "git",
     "url": "https://github.com/panates/power-tasks.git"
   },
-  "engines": {
-    "node": ">=16.0"
-  },
-  "files": [
-    "cjs/",
-    "esm/",
-    "types/",
-    "LICENSE",
-    "README.md",
-    "CHANGELOG.md"
-  ],
   "keywords": [
     "javascript",
     "typescript",
