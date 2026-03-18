@@ -2,19 +2,49 @@ import DoublyLinked from "doublylinked";
 import { AsyncEventEmitter } from "strict-typed-events";
 import { Task, TaskLike } from "./task.js";
 
+/**
+ * Options for configuring a {@link TaskQueue}.
+ */
 export interface TaskQueueOptions {
+  /**
+   * The maximum number of tasks allowed in the queue (including running tasks).
+   */
   maxQueue?: number;
+  /**
+   * The maximum number of tasks to run concurrently.
+   */
   concurrency?: number;
+  /**
+   * Whether the queue should start in a paused state.
+   */
   paused?: boolean;
 }
 
+/**
+ * A `TaskQueue` manages the execution of tasks with concurrency control.
+ * It allows limiting the number of simultaneous tasks and provides methods
+ * to pause, resume, and manage the task lifecycle.
+ *
+ * @extends AsyncEventEmitter
+ */
 export class TaskQueue extends AsyncEventEmitter {
+  /**
+   * The maximum number of tasks allowed in the queue.
+   */
   maxQueue?: number;
+  /**
+   * The maximum number of tasks to run concurrently.
+   */
   concurrency?: number;
   protected _paused: boolean;
   protected _queue = new DoublyLinked<Task>();
   protected _running = new Set<Task>();
 
+  /**
+   * Constructs a new TaskQueue.
+   *
+   * @param options - Configuration options for the queue.
+   */
   constructor(options?: TaskQueueOptions) {
     super();
     this.maxQueue = options?.maxQueue;
@@ -22,42 +52,71 @@ export class TaskQueue extends AsyncEventEmitter {
     this._paused = !!options?.paused;
   }
 
+  /**
+   * Gets the total number of tasks in the queue (both queued and running).
+   */
   get size() {
     return this._queue.length + this._running.size;
   }
 
+  /**
+   * Gets the number of tasks currently running.
+   */
   get running() {
     return this._running.size;
   }
 
+  /**
+   * Gets the number of tasks currently waiting in the queue.
+   */
   get queued() {
     return this._queue.length;
   }
 
+  /**
+   * Whether the queue is currently paused.
+   */
   get paused(): boolean {
     return this._paused;
   }
 
+  /**
+   * Pauses the queue execution. No new tasks will be started.
+   */
   pause(): void {
     this._paused = true;
   }
 
+  /**
+   * Resumes the queue execution and starts any queued tasks if concurrency allows.
+   */
   resume(): void {
     this._paused = false;
     setImmediate(() => this._pulse());
   }
 
+  /**
+   * Clears all tasks from the queue and aborts them.
+   */
   clearQueue() {
     this._queue.forEach((task) => task.abort());
     this._queue = new DoublyLinked();
   }
 
+  /**
+   * Aborts all running tasks and clears the queue.
+   */
   abortAll(): void {
     if (!this.size) return;
     this.clearQueue();
     this._running.forEach((task) => task.abort());
   }
 
+  /**
+   * Returns a promise that resolves when all tasks have finished and the queue is empty.
+   *
+   * @returns A promise that resolves when the queue finishes.
+   */
   async wait(): Promise<void> {
     if (!this.size) return Promise.resolve();
     return new Promise((resolve) => {
@@ -65,10 +124,24 @@ export class TaskQueue extends AsyncEventEmitter {
     });
   }
 
+  /**
+   * Adds a task to the beginning of the queue.
+   *
+   * @template T - The type of the result produced by the task.
+   * @param task - The task or task function to enqueue.
+   * @returns The {@link Task} instance.
+   */
   enqueuePrepend<T = any>(task: TaskLike<T>): Task<T> {
     return this._enqueue(task, true);
   }
 
+  /**
+   * Adds a task to the end of the queue.
+   *
+   * @template T - The type of the result produced by the task.
+   * @param task - The task or task function to enqueue.
+   * @returns The {@link Task} instance.
+   */
   enqueue<T = any>(task: TaskLike<T>): Task<T> {
     return this._enqueue(task, false);
   }
