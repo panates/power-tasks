@@ -108,6 +108,13 @@ export interface TaskOptions {
   exclusive?: boolean;
 
   /**
+   * An optional AbortSignal object that can be used to communicate with, or to abort, an operation.
+   * The abortSignal allows you to signal cancellation requests or abort ongoing tasks.
+   * Typically used for managing the lifecycle of async operations.
+   */
+  abortSignal?: AbortSignal;
+
+  /**
    * Timeout in milliseconds to wait for the task to abort before forcing an 'aborted' status.
    * @default 30000
    */
@@ -219,6 +226,8 @@ export class Task<T = any> extends AsyncEventEmitter {
     if (options.onUpdate) this.on("update", options.onUpdate);
     if (options.onUpdateRecursive)
       this.on("update-recursive", options.onUpdateRecursive);
+    if (options.abortSignal)
+      options.abortSignal.addEventListener("abort", () => this.abort());
   }
 
   /**

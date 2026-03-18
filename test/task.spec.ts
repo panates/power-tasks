@@ -69,6 +69,26 @@ describe("Task", () => {
     expect(task.status).toEqual("fulfilled");
   });
 
+  it("should abort using abortSignal", async () => {
+    const abortController = new AbortController();
+
+    const task = new Task(
+      async ({ signal }) => {
+        await delay(20);
+        if (signal.aborted) throw new AbortError();
+      },
+      { id: "t1", abortSignal: abortController.signal },
+    );
+    const messages: string[] = [];
+    const onUpdate = logUpdates(messages);
+    task.on("update", onUpdate);
+    await task.start();
+    await delay(10);
+    abortController.abort();
+    await task.toPromise();
+    expect(messages).toStrictEqual(["t1:running", "t1:aborting", "t1:aborted"]);
+  });
+
   it("should force abort after timeout", async () => {
     const task = new Task(
       async () => {
