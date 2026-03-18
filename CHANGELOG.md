@@ -1,7 +1,11 @@
 ## Changelog
 
-### [v1.13.0](https://github.com/panates/power-tasks/compare/v1.12.0...v1.13.0) - 
+### [v1.13.1](https://github.com/panates/power-tasks/compare/v1.13.0...v1.13.1) - 
 
-#### 🛠 Refactoring and Updates
+#### 🚀 New Features
 
-- refactor: Removed cjs support @Eray Hanoğlu 
+- feat: Added "abortSignal" to options @Eray Hanoğlu 
+
+#### 💬 General Changes
+
+- dev: Minor tsconfig changes @Eray Hanoğlu 
