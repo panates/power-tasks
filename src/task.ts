@@ -1,5 +1,5 @@
+import { AsyncEventEmitter } from "node-events-async";
 import * as os from "os";
-import { AsyncEventEmitter } from "strict-typed-events";
 import { plural } from "./utils.js";
 
 /**

@@ -1,5 +1,5 @@
 import DoublyLinked from "doublylinked";
-import { AsyncEventEmitter } from "strict-typed-events";
+import { AsyncEventEmitter } from "node-events-async";
 import { Task, TaskLike } from "./task.js";
 
 /**
