@@ -1,150 +1,11 @@
 import { AsyncEventEmitter } from "node-events-async";
 import * as os from "os";
+import type { TaskEvents } from "./interfaces/task-events.js";
+import type { TaskOptions } from "./interfaces/task-options.js";
+import type { TaskFunction, TaskLike, TaskStatus } from "./interfaces/types.js";
 import { plural } from "./utils.js";
 
-/**
- * Represents a function that defines the work to be performed by a task.
- *
- * @template T - The type of the result returned by the task.
- * @param args - The arguments provided to the task function, including a task instance and an abort signal.
- * @returns The result of the task, which can be a value or a promise.
- */
-export type TaskFunction<T = any> = (args: TaskFunctionArgs) => T | Promise<T>;
-
-/**
- * Represents a task-like object, which can be either a {@link Task} instance or a {@link TaskFunction}.
- *
- * @template T - The type of the result produced by the task.
- */
-export type TaskLike<T = any> = Task<T> | TaskFunction;
-
-/**
- * Represents the possible statuses of a task.
- *
- * - `idle`: The task has been created but not yet started.
- * - `waiting`: The task is waiting for its dependencies to complete.
- * - `running`: The task is currently executing.
- * - `fulfilled`: The task has completed successfully.
- * - `failed`: The task has failed with an error.
- * - `aborting`: The task is in the process of being aborted.
- * - `aborted`: The task has been aborted.
- */
-export type TaskStatus =
-  | "idle"
-  | "waiting"
-  | "running"
-  | "fulfilled"
-  | "failed"
-  | "aborting"
-  | "aborted";
 const osCPUs = os.cpus().length;
-
-/**
- * Arguments passed to a {@link TaskFunction}.
- */
-export interface TaskFunctionArgs {
-  /**
-   * The {@link Task} instance executing the function.
-   */
-  task: Task;
-  /**
-   * An `AbortSignal` that can be used to monitor if the task has been aborted.
-   */
-  signal: AbortSignal;
-}
-
-/**
- * Options for configuring a {@link Task}.
- */
-export interface TaskOptions {
-  /**
-   * Unique identifier for the task.
-   */
-  id?: any;
-
-  /**
-   * Name of the task. This value is used for dependency management.
-   */
-  name?: string;
-
-  /**
-   * Arguments to be passed to the task function.
-   */
-  args?: any[];
-
-  /**
-   * A list of child tasks or a function that returns them.
-   */
-  children?: TaskLike[] | (() => TaskLike[] | Promise<TaskLike[]>);
-
-  /**
-   * A list of tasks (instances or names) that must complete before this task starts.
-   */
-  dependencies?: (Task | string)[];
-
-  /**
-   * The maximum number of child tasks to run in parallel.
-   * Defaults to the number of OS CPUs.
-   */
-  concurrency?: number;
-
-  /**
-   * Whether to abort remaining child tasks if one fails.
-   * @default true
-   */
-  bail?: boolean;
-
-  /**
-   * Whether to run child tasks sequentially (one by one).
-   * Equivalent to setting `concurrency: 1`.
-   */
-  serial?: boolean;
-
-  /**
-   * Whether the task should run exclusively.
-   * If true, a task queue will wait for this task to complete before starting other tasks,
-   * even if concurrency is greater than 1.
-   */
-  exclusive?: boolean;
-
-  /**
-   * An optional AbortSignal object that can be used to communicate with, or to abort, an operation.
-   * The abortSignal allows you to signal cancellation requests or abort ongoing tasks.
-   * Typically used for managing the lifecycle of async operations.
-   */
-  abortSignal?: AbortSignal;
-
-  /**
-   * Timeout in milliseconds to wait for the task to abort before forcing an 'aborted' status.
-   * @default 30000
-   */
-  abortTimeout?: number;
-
-  /**
-   * Callback invoked when the task starts.
-   */
-  onStart?: (task: Task) => void;
-  /**
-   * Callback invoked when the task finishes (successfully, failed, or aborted).
-   */
-  onFinish?: (task: Task) => void;
-  /**
-   * Callback invoked when the task's execution function begins.
-   */
-  onRun?: (task: Task) => void;
-  /**
-   * Callback invoked when the task's status changes.
-   */
-  onStatusChange?: (task: Task) => void;
-  /**
-   * Callback invoked when the task's properties are updated.
-   */
-  onUpdate?: (task: Task, properties: string[]) => void;
-  /**
-   * Callback invoked when the task or any of its children's properties are updated.
-   */
-  onUpdateRecursive?: (task: Task, properties: string[]) => void;
-}
 
 export interface TaskUpdateValues {
   status?: TaskStatus;
@@ -174,7 +35,7 @@ let idGen = 0;
  * @template T - The type of the result produced by the task.
  * @extends AsyncEventEmitter
  */
-export class Task<T = any> extends AsyncEventEmitter {
+export class Task<T = any> extends AsyncEventEmitter<TaskEvents> {
   protected [taskContextKey]?: TaskContext;
   protected _id = "";
   protected _options: TaskOptions;
@@ -876,7 +737,7 @@ export class Task<T = any> extends AsyncEventEmitter {
     if (keys.length) {
       if (keys.includes("status")) {
         if (!oldStarted) this.emitAsync("start", this).catch(noOp);
-        this.emitAsync("status-change", this).catch(noOp);
+        this.emitAsync("status-change", this, this.status).catch(noOp);
         if (this._status === "running") this.emitAsync("run", this).catch(noOp);
       }
       this.emitAsync("update", this, keys).catch(noOp);
@@ -888,7 +749,7 @@ export class Task<T = any> extends AsyncEventEmitter {
           delete this._abortTimer;
         }
         delete this[taskContextKey];
-        if (this.error) this.emitAsync("error", this.error).catch(noOp);
+        if (this.error) this.emitAsync("error", this.error, this).catch(noOp);
         this.emitAsync("finish", this).catch(noOp);
         if (ctx) ctx.triggerPulse();
       }
