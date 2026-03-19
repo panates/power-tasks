@@ -1,11 +1,7 @@
 ## Changelog
 
-### [v1.13.1](https://github.com/panates/power-tasks/compare/v1.13.0...v1.13.1) - 
+### [v1.13.2](https://github.com/panates/power-tasks/compare/v1.13.1...v1.13.2) - 
 
-#### 🚀 New Features
+#### 🛠 Refactoring and Updates
 
-- feat: Added "abortSignal" to options @Eray Hanoğlu 
-
-#### 💬 General Changes
-
-- dev: Minor tsconfig changes @Eray Hanoğlu 
+- refactor: added protected _execute method @Eray Hanoğlu 
