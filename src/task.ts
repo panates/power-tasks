@@ -200,7 +200,7 @@ export class Task<T = any> extends AsyncEventEmitter {
    * @param children - An array of child tasks or task functions.
    * @param options - Configuration options for the task.
    */
-  constructor(children: TaskLike[], options?: Omit<TaskOptions, "children">);
+  constructor(children: TaskLike[], options?: TaskOptions);
   /**
    * Constructs a new Task with an execution function.
    *
@@ -807,12 +807,7 @@ export class Task<T = any> extends AsyncEventEmitter {
     this._update({ status: "running", message: "Running" });
     ctx.executingTasks.add(this);
     const t = Date.now();
-    const signal = this._abortController.signal;
-    (async () =>
-      (this._executeFn || noOp)({
-        task: this,
-        signal,
-      }))()
+    this._execute()
       .then((result: any) => {
         ctx.executingTasks.delete(this);
         this._executeDuration = Date.now() - t;
@@ -839,6 +834,13 @@ export class Task<T = any> extends AsyncEventEmitter {
           message: error instanceof Error ? error.message : "" + error,
         });
       });
+  }
+
+  protected async _execute() {
+    return this._executeFn?.({
+      task: this,
+      signal: this._abortController.signal,
+    });
   }
 
   protected _update(prop: TaskUpdateValues) {
