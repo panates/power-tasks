@@ -1,6 +1,7 @@
 import DoublyLinked from "doublylinked";
 import { AsyncEventEmitter } from "node-events-async";
-import { Task, TaskLike } from "./task.js";
+import type { TaskLike } from "./interfaces/types.js";
+import { Task } from "./task.js";
 
 /**
  * Options for configuring a {@link TaskQueue}.
