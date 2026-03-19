@@ -114,9 +114,10 @@ throughout its lifecycle.
 | `message`            | `string`                    | Current message of the task.                                                  |
 | `result`             | `any`                       | Result produced by the task.                                                  |
 | `error`              | `any`                       | Error if the task failed.                                                     |
-| `isStarted`          | `boolean`                   | Whether the task has started but not yet finished.                            |
-| `isFinished`         | `boolean`                   | Whether the task has completed (successfully, failed, or aborted).            |
 | `isFailed`           | `boolean`                   | Whether the task has failed.                                                  |
+| `isAborted`          | `boolean`                   | Whether the task has been aborted or aborting                                 |
+| `isFinished`         | `boolean`                   | Whether the task has completed (successfully, failed, or aborted).            |
+| `isStarted`          | `boolean`                   | Whether the task has started but not yet finished.                            |
 | `executeDuration`    | `number` \| `undefined`     | Duration of the task execution in milliseconds.                               |
 | `children`           | `Task[]` \| `undefined`     | List of child tasks.                                                          |
 | `dependencies`       | `Task[]` \| `undefined`     | List of tasks this task depends on.                                           |

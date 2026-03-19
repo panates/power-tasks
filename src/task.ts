@@ -298,6 +298,13 @@ export class Task<T = any> extends AsyncEventEmitter {
   }
 
   /**
+   * Whether the task has been aborted.
+   */
+  get isAborted(): boolean {
+    return this.status === "aborted" || this.status === "aborting";
+  }
+
+  /**
    * Gets the duration of the task execution in milliseconds.
    */
   get executeDuration(): number | undefined {
