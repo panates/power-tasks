@@ -1,25 +1,9 @@
 import DoublyLinked from "doublylinked";
 import { AsyncEventEmitter } from "node-events-async";
+import { TaskQueueEvents } from "./interfaces/task-queue-events.js";
+import { TaskQueueOptions } from "./interfaces/taskqueue-options.js";
 import type { TaskLike } from "./interfaces/types.js";
 import { Task } from "./task.js";
-
-/**
- * Options for configuring a {@link TaskQueue}.
- */
-export interface TaskQueueOptions {
-  /**
-   * The maximum number of tasks allowed in the queue (including running tasks).
-   */
-  maxQueue?: number;
-  /**
-   * The maximum number of tasks to run concurrently.
-   */
-  concurrency?: number;
-  /**
-   * Whether the queue should start in a paused state.
-   */
-  paused?: boolean;
-}
 
 /**
  * A `TaskQueue` manages the execution of tasks with concurrency control.
@@ -28,7 +12,7 @@ export interface TaskQueueOptions {
  *
  * @extends AsyncEventEmitter
  */
-export class TaskQueue extends AsyncEventEmitter {
+export class TaskQueue extends AsyncEventEmitter<TaskQueueEvents> {
   /**
    * The maximum number of tasks allowed in the queue.
    */
@@ -40,6 +24,7 @@ export class TaskQueue extends AsyncEventEmitter {
   protected _paused: boolean;
   protected _queue = new DoublyLinked<Task>();
   protected _running = new Set<Task>();
+  protected _runningIds = new Set<string>();
 
   /**
    * Constructs a new TaskQueue.
@@ -147,6 +132,25 @@ export class TaskQueue extends AsyncEventEmitter {
     return this._enqueue(task, false);
   }
 
+  /**
+   * Checks if a task with the given ID is currently running.
+   *
+   * @param id - The ID of the task to check.
+   * @returns `true` if a task with the given ID is running, `false` otherwise.
+   */
+  isRunning(id: string): boolean {
+    return this._runningIds.has(id);
+  }
+
+  /**
+   * Internal method to enqueue a task.
+   *
+   * @template T - The type of the task result.
+   * @param task - The task-like object to enqueue.
+   * @param prepend - Whether to add the task to the beginning of the queue.
+   * @returns The {@link Task} instance.
+   * @protected
+   */
   protected _enqueue<T = any>(task: TaskLike, prepend: boolean): Task<T> {
     if (this.maxQueue && this.size >= this.maxQueue)
       throw new Error(`Queue limit (${this.maxQueue}) exceeded`);
@@ -167,14 +171,21 @@ export class TaskQueue extends AsyncEventEmitter {
     return taskInstance;
   }
 
+  /**
+   * Internal method to process the queue and start tasks.
+   * @protected
+   */
   protected _pulse() {
     if (this.paused) return;
     while (!this.concurrency || this._running.size < this.concurrency) {
       const task = this._queue.shift();
       if (!task) return;
       this._running.add(task);
+      const id = task.id;
+      if (id) this._runningIds.add(id);
       task.prependOnceListener("finish", () => {
         this._running.delete(task);
+        if (id) this._runningIds.delete(id);
         if (!(this._running.size || this._queue.length))
           return this.emit("finish");
         this._pulse();

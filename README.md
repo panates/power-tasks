@@ -125,6 +125,7 @@ throughout its lifecycle.
 | `failedDependencies` | `Task[]` \| `undefined`     | List of dependencies that failed.                                             |
 | `needWaiting`        | `boolean`                   | Whether the task is currently waiting for children or dependencies to finish. |
 | `options`            | [TaskOptions](#taskoptions) | Task configuration options.                                                   |
+| `parent`             | `Task` \| `undefined`       | The parent task if this is a child task.                                      |
 
 #### Methods
 
@@ -144,6 +145,14 @@ throughout its lifecycle.
   ```typescript
   const waitingTasks = task.getWaitingTasks();
   ```
+- `reset()`: Resets the task to its initial state so it can be started again.
+  ```typescript
+  task.reset();
+  ```
+- `toJSON()`: Returns a JSON-compatible representation of the task.
+  ```typescript
+  const json = task.toJSON();
+  ```
 
 #### Events
 
@@ -159,34 +168,52 @@ throughout its lifecycle.
   ```typescript
   task.on('finish', (task) => console.log('Finished'));
   ```
+- `abort`: Emitted when the task is aborted.
+  ```typescript
+  task.on('abort', (task) => console.log('Aborted'));
+  ```
 - `status-change`: Emitted when the task status changes.
   ```typescript
-  task.on('status-change', (task) => console.log('Status changed to', task.status));
+  task.on('status-change', (task, status) => console.log('Status changed to', status));
   ```
 - `update`: Emitted when task properties are updated.
   ```typescript
   task.on('update', (task, properties) => console.log('Updated', properties));
   ```
+- `update-recursive`: Emitted when properties of the task or any of its children are updated.
+  ```typescript
+  task.on('update-recursive', (task, properties) => console.log('Recursive update', properties));
+  ```
 - `error`: Emitted when an error occurs.
   ```typescript
-  task.on('error', (error) => console.error(error));
+  task.on('error', (error, task) => console.error(error));
+  ```
+- `wait-end`: Emitted when the task stops waiting for dependencies.
+  ```typescript
+  task.on('wait-end', () => console.log('Wait ended'));
   ```
 
 ### TaskOptions
 
-| Option         | Type                        | Description                                                                                     |
-|----------------|-----------------------------|-------------------------------------------------------------------------------------------------|
-| `id`           | `any`                       | Unique identifier for the task.                                                                 |
-| `name`         | `string`                    | Name of the task (used for dependencies).                                                       |
-| `args`         | `any[]`                     | Arguments passed to the task function.                                                          |
-| `children`     | `TaskLike[]` \| `() => ...` | List of child tasks or a function that returns them.                                            |
-| `dependencies` | `(Task \| string)[]`        | Tasks that must finish before this task starts.                                                 |
-| `concurrency`  | `number`                    | Number of child tasks to run in parallel.                                                       |
-| `bail`         | `boolean`                   | If true (default), aborts children if one fails.                                                |
-| `serial`       | `boolean`                   | If true, runs children one by one (shortcut for concurrency: 1).                                |
-| `exclusive`    | `boolean`                   | If true, the task queue waits for this task to complete exclusively.                            |
-| `abortSignal`  | `AbortSignal`               | An optional AbortSignal object that can be used to communicate with, or to abort, an operation. |
-| `abortTimeout` | `number`                    | Timeout in ms to wait for aborting tasks.                                                       |
+| Option              | Type                        | Description                                                                                     |
+|---------------------|-----------------------------|-------------------------------------------------------------------------------------------------|
+| `id`                | `any`                       | Unique identifier for the task.                                                                 |
+| `name`              | `string`                    | Name of the task (used for dependencies).                                                       |
+| `args`              | `any[]`                     | Arguments passed to the task function.                                                          |
+| `children`          | `TaskLike[]` \| `() => ...` | List of child tasks or a function that returns them.                                            |
+| `dependencies`      | `(Task \| string)[]`        | Tasks that must finish before this task starts.                                                 |
+| `concurrency`       | `number`                    | Number of child tasks to run in parallel.                                                       |
+| `bail`              | `boolean`                   | If true (default), aborts children if one fails.                                                |
+| `serial`            | `boolean`                   | If true, runs children one by one (shortcut for concurrency: 1).                                |
+| `exclusive`         | `boolean`                   | If true, the task queue waits for this task to complete exclusively.                            |
+| `abortSignal`       | `AbortSignal`               | An optional AbortSignal object that can be used to communicate with, or to abort, an operation. |
+| `abortTimeout`      | `number`                    | Timeout in ms to wait for aborting tasks.                                                       |
+| `onStart`           | `Function`                  | Callback invoked when the task starts.                                                          |
+| `onFinish`          | `Function`                  | Callback invoked when the task finishes.                                                        |
+| `onRun`             | `Function`                  | Callback invoked when the task's execution function begins.                                     |
+| `onStatusChange`    | `Function`                  | Callback invoked when the task's status changes.                                                |
+| `onUpdate`          | `Function`                  | Callback invoked when the task's properties are updated.                                        |
+| `onUpdateRecursive` | `Function`                  | Callback invoked when properties of the task or its children are updated.                       |
 
 ### TaskStatus
 
@@ -230,6 +257,10 @@ A task can be in one of the following states:
   ```typescript
   queue.enqueuePrepend(myTask);
   ```
+- `isRunning(id)`: Checks if a task with the given ID is currently running.
+  ```typescript
+  const running = queue.isRunning('my-task-id');
+  ```
 - `pause()`: Pauses the queue execution.
   ```typescript
   queue.pause();
@@ -263,8 +294,16 @@ A task can be in one of the following states:
   ```
 - `error`: Emitted when a task in the queue emits an error.
   ```typescript
-  queue.on('error', (error) => console.error(error));
+  queue.on('error', (error, task) => console.error(error));
   ```
+
+### TaskQueueOptions
+
+| Option        | Type      | Description                                                           |
+|---------------|-----------|-----------------------------------------------------------------------|
+| `concurrency` | `number`  | The maximum number of tasks to run concurrently.                      |
+| `maxQueue`    | `number`  | The maximum number of tasks allowed in the queue (including running). |
+| `paused`      | `boolean` | Whether the queue should start in a paused state.                     |
 
 ### License
 
