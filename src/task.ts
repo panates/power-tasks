@@ -7,19 +7,52 @@ import { plural } from "./utils.js";
 
 const osCPUs = os.cpus().length;
 
+/**
+ * Values used to update a task's state.
+ */
 export interface TaskUpdateValues {
+  /**
+   * The new status of the task.
+   */
   status?: TaskStatus;
+  /**
+   * A message associated with the task's current state.
+   */
   message?: string;
+  /**
+   * The error that occurred during task execution, if any.
+   */
   error?: any;
+  /**
+   * The result produced by the task, if any.
+   */
   result?: any;
+  /**
+   * Whether the task is currently waiting for something.
+   */
   waitingFor?: boolean;
 }
 
+/**
+ * Internal context shared among tasks for execution management.
+ * @internal
+ */
 class TaskContext {
-  // allTasks = new Set<Task>();
+  /**
+   * Tasks currently being executed.
+   */
   executingTasks = new Set<Task>();
+  /**
+   * Tasks queued for execution.
+   */
   queue = new Set<Task>();
+  /**
+   * Maximum number of concurrent tasks.
+   */
   concurrency!: number;
+  /**
+   * Function to trigger the execution pulse.
+   */
   triggerPulse!: () => void;
 }
 
@@ -336,6 +369,12 @@ export class Task<T = any> extends AsyncEventEmitter<TaskEvents> {
     });
   }
 
+  /**
+   * Resolves the child tasks tree.
+   *
+   * @param callback - Callback to invoke when the tree is resolved.
+   * @protected
+   */
   protected _determineChildrenTree(callback: (err?: any) => void): void {
     const ctx = this[taskContextKey] as TaskContext;
     const options = this._options;
@@ -402,6 +441,12 @@ export class Task<T = any> extends AsyncEventEmitter<TaskEvents> {
     handler(undefined, this._options.children);
   }
 
+  /**
+   * Resolves dependencies for child tasks.
+   *
+   * @param scope - The list of tasks to consider for dependency resolution.
+   * @protected
+   */
   protected _determineChildrenDependencies(scope: Task[]): void {
     if (!this._children) return;
 
@@ -459,6 +504,10 @@ export class Task<T = any> extends AsyncEventEmitter<TaskEvents> {
     }
   }
 
+  /**
+   * Captures dependencies and sets up listeners for their completion.
+   * @protected
+   */
   protected _captureDependencies(): void {
     if (!this._waitingFor) return;
     const failedDependencies: Task[] = [];
@@ -534,6 +583,10 @@ export class Task<T = any> extends AsyncEventEmitter<TaskEvents> {
     if (!waitingFor.size) handleDependentAborted();
   }
 
+  /**
+   * Internal method to initiate task execution.
+   * @protected
+   */
   protected _start(): void {
     if (this.isStarted || this.isFinished) return;
 
@@ -548,6 +601,10 @@ export class Task<T = any> extends AsyncEventEmitter<TaskEvents> {
     this._startChildren();
   }
 
+  /**
+   * Internal method to start child tasks execution.
+   * @protected
+   */
   protected _startChildren() {
     const children = this._children;
     if (!children) {
@@ -613,6 +670,10 @@ export class Task<T = any> extends AsyncEventEmitter<TaskEvents> {
     this._pulse();
   }
 
+  /**
+   * Internal method that manages the execution flow of the task and its children.
+   * @protected
+   */
   protected _pulse() {
     const ctx = this[taskContextKey] as TaskContext;
 
@@ -704,6 +765,10 @@ export class Task<T = any> extends AsyncEventEmitter<TaskEvents> {
       });
   }
 
+  /**
+   * Executes the task's function.
+   * @protected
+   */
   protected async _execute() {
     return this._executeFn?.({
       task: this,
@@ -711,6 +776,12 @@ export class Task<T = any> extends AsyncEventEmitter<TaskEvents> {
     });
   }
 
+  /**
+   * Updates task properties and emits relevant events.
+   *
+   * @param prop - The property values to update.
+   * @protected
+   */
   protected _update(prop: TaskUpdateValues) {
     const oldFinished = this.isFinished;
     const keys: string[] = [];
@@ -756,6 +827,10 @@ export class Task<T = any> extends AsyncEventEmitter<TaskEvents> {
     }
   }
 
+  /**
+   * Internal method to abort all child tasks.
+   * @protected
+   */
   protected async _abortChildren(): Promise<void> {
     const promises: Promise<void>[] = [];
     if (this._children) {
