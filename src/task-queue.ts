@@ -24,7 +24,7 @@ export class TaskQueue extends AsyncEventEmitter<TaskQueueEvents> {
   protected _paused: boolean;
   protected _queue = new DoublyLinked<Task>();
   protected _running = new Set<Task>();
-  protected _runningIds = new Set<string>();
+  protected _idMap = new Map<string, Task>();
 
   /**
    * Constructs a new TaskQueue.
@@ -85,7 +85,10 @@ export class TaskQueue extends AsyncEventEmitter<TaskQueueEvents> {
    * Clears all tasks from the queue and aborts them.
    */
   clearQueue() {
-    this._queue.forEach((task) => task.abort());
+    this._queue.forEach((task) => {
+      task.abort();
+      this._idMap.delete(task.id);
+    });
     this._queue = new DoublyLinked();
   }
 
@@ -133,13 +136,13 @@ export class TaskQueue extends AsyncEventEmitter<TaskQueueEvents> {
   }
 
   /**
-   * Checks if a task with the given ID is currently running.
+   * Retrieves a task by its ID.
    *
-   * @param id - The ID of the task to check.
-   * @returns `true` if a task with the given ID is running, `false` otherwise.
+   * @param id - The ID of the task to retrieve.
+   * @returns The {@link Task} instance if found, or `undefined` otherwise.
    */
-  isRunning(id: string): boolean {
-    return this._runningIds.has(id);
+  getTask(id: string): Task | undefined {
+    return this._idMap.get(id);
   }
 
   /**
@@ -167,6 +170,7 @@ export class TaskQueue extends AsyncEventEmitter<TaskQueueEvents> {
     this.emit("enqueue", taskInstance);
     if (prepend) this._queue.unshift(taskInstance);
     else this._queue.push(taskInstance);
+    if (taskInstance.id) this._idMap.set(taskInstance.id, taskInstance);
     this._pulse();
     return taskInstance;
   }
@@ -182,10 +186,9 @@ export class TaskQueue extends AsyncEventEmitter<TaskQueueEvents> {
       if (!task) return;
       this._running.add(task);
       const id = task.id;
-      if (id) this._runningIds.add(id);
       task.prependOnceListener("finish", () => {
         this._running.delete(task);
-        if (id) this._runningIds.delete(id);
+        if (id) this._idMap.delete(id);
         if (!(this._running.size || this._queue.length))
           return this.emit("finish");
         this._pulse();
