@@ -257,9 +257,9 @@ A task can be in one of the following states:
   ```typescript
   queue.enqueuePrepend(myTask);
   ```
-- `isRunning(id)`: Checks if a task with the given ID is currently running.
+- `getTask(id)`: Retrieves a task by its ID. Returns the `Task` instance if found, or `undefined` otherwise.
   ```typescript
-  const running = queue.isRunning('my-task-id');
+  const task = queue.getTask('my-task-id');
   ```
 - `pause()`: Pauses the queue execution.
   ```typescript
