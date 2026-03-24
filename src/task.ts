@@ -139,6 +139,20 @@ export class Task<T = any> extends AsyncEventEmitter<TaskEvents> {
   }
 
   /**
+   * Gets the title of the task.
+   */
+  get title(): string | undefined {
+    return this._options.title;
+  }
+
+  /**
+   * Gets the title of the task.
+   */
+  get description(): string | undefined {
+    return this._options.description;
+  }
+
+  /**
    * Gets the list of child tasks.
    */
   get children(): Task[] | undefined {
@@ -323,7 +337,7 @@ export class Task<T = any> extends AsyncEventEmitter<TaskEvents> {
     this._id = this._id || "t" + ++idGen;
     const ctx = (this[taskContextKey] = new TaskContext());
     ctx.concurrency = this.options.concurrency || osCPUs;
-    let pulseTimer: NodeJS.Timer | undefined;
+    let pulseTimer: NodeJS.Timeout | undefined;
     ctx.triggerPulse = () => {
       if (pulseTimer || this.isFinished) return;
       pulseTimer = setTimeout(() => {

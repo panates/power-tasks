@@ -16,6 +16,16 @@ export interface TaskOptions {
   name?: string;
 
   /**
+   * Title of the task
+   */
+  title?: string;
+
+  /**
+   * Description of the task
+   */
+  description?: string;
+
+  /**
    * Arguments to be passed to the task function.
    */
   args?: any[];
