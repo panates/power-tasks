@@ -821,7 +821,8 @@ export class Task<T = any> extends AsyncEventEmitter<TaskEvents> {
     }
     if (keys.length) {
       if (keys.includes("status")) {
-        if (!oldStarted) this.emitAsync("start", this).catch(noOp);
+        if (prop.status === "running" && !oldStarted)
+          this.emitAsync("start", this).catch(noOp);
         this.emitAsync("status-change", this, this.status).catch(noOp);
         if (this._status === "running") this.emitAsync("run", this).catch(noOp);
       }
