@@ -152,8 +152,14 @@ describe("Task", () => {
       {
         id: "t1",
         children: [
-          new Task(() => 1),
-          new Task(async () => 2),
+          new Task(async () => {
+            await delay(20);
+            return 1;
+          }),
+          new Task(async () => {
+            await delay(10);
+            return 2;
+          }),
           () => 3,
           async () => {
             await delay(50);
